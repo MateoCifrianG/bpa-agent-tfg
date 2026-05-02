@@ -1,7 +1,8 @@
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from datetime import datetime
 from app.database import get_db
@@ -11,6 +12,19 @@ from app.models.user import User
 from app.auth.jwt import get_current_user
 
 router = APIRouter(prefix="/api/kpis", tags=["kpis"])
+
+_XSS_RE = re.compile(r"<script|javascript:", re.IGNORECASE)
+
+
+def _sanitize_str(v: str | None, max_len: int = 255) -> str | None:
+    if v is None:
+        return None
+    v = v.strip()
+    if len(v) > max_len:
+        raise ValueError(f"El campo no puede superar los {max_len} caracteres")
+    if _XSS_RE.search(v):
+        raise ValueError("El campo contiene contenido no permitido")
+    return v
 
 
 class KPIOut(BaseModel):
@@ -34,6 +48,11 @@ class KPICreate(BaseModel):
     tendencia: str = "up"
     categoria: Optional[str] = None
 
+    @field_validator("nombre", "valor", "objetivo", "unidad", "tendencia", "categoria")
+    @classmethod
+    def validate_strings(cls, v: Optional[str]) -> Optional[str]:
+        return _sanitize_str(v, 255)
+
 
 class KPIUpdate(BaseModel):
     nombre: Optional[str] = None
@@ -42,6 +61,11 @@ class KPIUpdate(BaseModel):
     unidad: Optional[str] = None
     tendencia: Optional[str] = None
     categoria: Optional[str] = None
+
+    @field_validator("nombre", "valor", "objetivo", "unidad", "tendencia", "categoria")
+    @classmethod
+    def validate_strings(cls, v: Optional[str]) -> Optional[str]:
+        return _sanitize_str(v, 255)
 
 
 async def _get_empresa_id(db: AsyncSession, user: User) -> str:

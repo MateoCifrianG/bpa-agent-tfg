@@ -549,8 +549,7 @@
       <div class="needs-actions">
         <button type="button" class="btn-back-step" onclick="showAccountStep()">Atrás</button>
         <button type="button" class="btn-submit" onclick="finishRegister(this)">
-          Continuar registro
-          <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+          Registro listo ✓
         </button>
       </div>
     </section>
@@ -684,14 +683,16 @@ function showAccountStep() {
 }
 
 function finishRegister(btn) {
-  const selectedNeeds = [...document.querySelectorAll('input[name="needs"]:checked')].map(i => i.value);
-  const empresa = document.getElementById('empresa').value;
-  const email = document.getElementById('email').value;
-  console.log('Register:', { email, empresa, selectedNeeds });
-
+  // Feedback visual inmediato
+  btn.disabled = true;
   btn.innerHTML = 'Registro listo <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>';
   btn.style.background = 'linear-gradient(135deg, oklch(0.65 0.15 140), oklch(0.55 0.16 160))';
   setProgress(2);
+
+  // Redirigir al dashboard tras breve pausa
+  setTimeout(() => {
+    window.location.href = 'dashboard.html';
+  }, 800);
 }
 
 // Animate step dots on scroll/interaction

@@ -1516,18 +1516,45 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
 }
 .chat-send-btn:hover { opacity: .85; transform: translateY(-1px); }
 .chat-send-btn svg { width: 15px; height: 15px; stroke: #fff; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.msg-full { display: flex; gap: .75rem; align-items: flex-end; max-width: 75%; }
+/* ── Mensajes del chat ── */
+.msg-full { display: flex; gap: .6rem; align-items: flex-end; max-width: 82%; }
 .msg-full.user { align-self: flex-end; flex-direction: row-reverse; }
-.msg-full .msg-avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: grid; place-items: center; font-size: .65rem; font-weight: 700; color: #fff; flex-shrink: 0; }
-.msg-full.agent .msg-avatar { background: linear-gradient(135deg, var(--accent), oklch(0.60 0.22 200)); }
-.msg-full .msg-text { padding: .65rem .9rem; border-radius: 14px; font-size: .83rem; line-height: 1.5; }
-.msg-full.agent .msg-text { background: var(--s2); border: 1px solid var(--border); color: var(--fg); border-bottom-left-radius: 4px; }
-.msg-full.user .msg-text { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border-bottom-right-radius: 4px; }
-.chat-typing { display: flex; gap: 4px; align-items: center; padding: .5rem .75rem; }
-.typing-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3); animation: blink 1.2s ease-in-out infinite; }
-.typing-dot:nth-child(2) { animation-delay: .2s; }
-.typing-dot:nth-child(3) { animation-delay: .4s; }
-@keyframes blink { 0%,100% { opacity: .3; transform: scale(.7); } 50% { opacity: 1; transform: scale(1); } }
+.msg-full .msg-avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; font-size: .65rem; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  box-shadow: 0 2px 8px rgba(99,102,241,.35);
+}
+.msg-full.agent .msg-avatar { background: #fff; padding: 2px; }
+.msg-full.agent .msg-avatar img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+.msg-full .msg-bubble { display: flex; flex-direction: column; }
+.msg-full .msg-text {
+  padding: .7rem 1rem; border-radius: 16px; font-size: .84rem; line-height: 1.6;
+  word-break: break-word; max-width: 100%;
+}
+.msg-full.agent .msg-text {
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.10);
+  color: var(--fg); border-bottom-left-radius: 4px;
+  backdrop-filter: blur(6px);
+}
+.msg-full.user .msg-text {
+  background: linear-gradient(135deg, #6366f1, #7c3aed); color: #fff;
+  border-bottom-right-radius: 4px;
+  box-shadow: 0 4px 16px rgba(99,102,241,.25);
+}
+.msg-full.agent .msg-text strong { color: var(--accent); }
+.msg-full.agent .msg-text ul { padding-left: 1.2rem; margin: .25rem 0; }
+.msg-full.agent .msg-text li { margin: .15rem 0; }
+.msg-full.agent .msg-text code {
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 4px; padding: .1em .4em; font-size: .8em; font-family: var(--font-mono, monospace);
+}
+/* Typing indicator */
+.chat-typing { display: flex; gap: 4px; align-items: center; padding: .3rem .1rem; }
+.typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); opacity:.5; animation: blink 1.3s ease-in-out infinite; }
+.typing-dot:nth-child(2) { animation-delay: .22s; }
+.typing-dot:nth-child(3) { animation-delay: .44s; }
+@keyframes blink { 0%,100% { opacity: .25; transform: scale(.7); } 50% { opacity: 1; transform: scale(1); } }
 </style>
 </head>
 <body>
@@ -1583,7 +1610,7 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
       <a class="nav-item" data-page="Agente IA" href="#" onclick="setPage(this,'Agente IA','page-agente');return false">
         <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 1 10 10v1a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1a6 6 0 0 0-12 0v1a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1A10 10 0 0 1 12 2Z"/><path d="M8 16a4 4 0 0 0 8 0"/></svg>
         <span class="nav-text">Agente IA</span>
-        <span class="badge">3</span>
+        <span class="badge" id="badgeAgente" style="display:none"></span>
       </a>
       <a class="nav-item" data-page="Procesos" href="#" onclick="setPage(this,'Procesos','page-procesos');return false">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><path d="M12 8v3M8.25 16.5 12 11M15.75 16.5 12 11"/></svg>
@@ -1596,7 +1623,7 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
       <a class="nav-item" data-page="Propuestas" href="#" onclick="setPage(this,'Propuestas','page-propuestas');return false">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
         <span class="nav-text">Propuestas</span>
-        <span class="badge">2</span>
+        <span class="badge" id="badgePropuestas" style="display:none"></span>
       </a>
       <a class="nav-item" data-page="Automatizaciones" href="#" onclick="setPage(this,'Automatizaciones','page-automatizaciones');return false">
         <svg viewBox="0 0 24 24"><path d="m13 2-2 2.5h3L12 7"/><path d="M10 14v-3a2 2 0 0 1 4 0v3"/><path d="M6 14a2 2 0 0 0-2 2v2h16v-2a2 2 0 0 0-2-2"/><path d="M14 14H10"/></svg>
@@ -1877,8 +1904,8 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
       <div class="chat-full">
         <div class="chat-full-messages" id="chatMessages">
           <div class="msg-full agent">
-            <div class="msg-avatar">B</div>
-            <div class="msg-text">¡Hola! Soy <strong>BPA-Agent</strong>, tu asistente de automatización de procesos. Puedo ayudarte a:<br><br>• Analizar y mapear tus procesos de negocio<br>• Identificar ineficiencias y cuellos de botella<br>• Proponer automatizaciones con n8n, Gmail, Drive, etc.<br>• Hacer seguimiento de KPIs operacionales<br><br>¿Por dónde empezamos?</div>
+            <div class="msg-avatar"><img src="assets/img/logo-agente.png" alt="BPA" onerror="this.textContent='B'"></div>
+            <div class="msg-bubble"><div class="msg-text">¡Hola! Soy <strong>BPA-Agent</strong> 👋 — puedo <strong>crear</strong>, <strong>analizar</strong> y <strong>gestionar</strong> tus procesos, KPIs y automatizaciones directamente desde aquí.<br><br>Prueba a decirme:<br>• <em>«Crea un proceso de facturación mensual»</em><br>• <em>«Analiza mis procesos»</em><br>• <em>«Crea una automatización con n8n»</em><br>• <em>«Dame un resumen de la empresa»</em><br><br>¿Empezamos?</div></div>
           </div>
         </div>
         <div class="chat-full-footer">

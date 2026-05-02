@@ -1,7 +1,8 @@
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from datetime import datetime
 from app.database import get_db
@@ -11,6 +12,19 @@ from app.models.user import User
 from app.auth.jwt import get_current_user
 
 router = APIRouter(prefix="/api/automatizaciones", tags=["automatizaciones"])
+
+_XSS_RE = re.compile(r"<script|javascript:", re.IGNORECASE)
+
+
+def _sanitize_str(v: str | None, max_len: int = 255) -> str | None:
+    if v is None:
+        return None
+    v = v.strip()
+    if len(v) > max_len:
+        raise ValueError(f"El campo no puede superar los {max_len} caracteres")
+    if _XSS_RE.search(v):
+        raise ValueError("El campo contiene contenido no permitido")
+    return v
 
 
 class AutomatizacionOut(BaseModel):
@@ -37,6 +51,16 @@ class AutomatizacionCreate(BaseModel):
     horas_mes: Optional[int] = None
     proceso_id: Optional[str] = None
 
+    @field_validator("nombre", "herramienta", "estado")
+    @classmethod
+    def validate_short_str(cls, v: Optional[str]) -> Optional[str]:
+        return _sanitize_str(v, 255)
+
+    @field_validator("descripcion")
+    @classmethod
+    def validate_descripcion(cls, v: Optional[str]) -> Optional[str]:
+        return _sanitize_str(v, 1000)
+
 
 class AutomatizacionUpdate(BaseModel):
     nombre: Optional[str] = None
@@ -45,6 +69,16 @@ class AutomatizacionUpdate(BaseModel):
     estado: Optional[str] = None
     ejecuciones: Optional[int] = None
     horas_mes: Optional[int] = None
+
+    @field_validator("nombre", "herramienta", "estado")
+    @classmethod
+    def validate_short_str(cls, v: Optional[str]) -> Optional[str]:
+        return _sanitize_str(v, 255)
+
+    @field_validator("descripcion")
+    @classmethod
+    def validate_descripcion(cls, v: Optional[str]) -> Optional[str]:
+        return _sanitize_str(v, 1000)
 
 
 async def _get_empresa_id(db: AsyncSession, user: User) -> str:
