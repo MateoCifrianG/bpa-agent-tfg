@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Configuración · BPA-Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#08080e;--s1:#0f0f17;--s2:#161622;
+  --border:rgba(255,255,255,.07);--border-hi:rgba(255,255,255,.12);
+  --fg:#eeeef5;--fg-2:#a0a0b8;--fg-3:#52526a;
+  --accent:oklch(0.82 0.12 130);--accent-rgb:130,210,100;
+  --indigo:#6366f1;--rose:#f43f5e;--amber:#f59e0b;--emerald:#10b981;
+  --sidebar-w:220px;--topbar-h:56px;
+}
+html,body{height:100%;background:var(--bg);color:var(--fg);font-family:"Inter",system-ui,sans-serif;overflow:hidden}
+.page-glow{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(circle at 20% 20%,rgba(99,102,241,.08) 0%,transparent 55%)}
+.shell{position:relative;z-index:1;display:grid;
+  grid-template-columns:var(--sidebar-w) 1fr;grid-template-rows:var(--topbar-h) 1fr;height:100vh;
+  transition:grid-template-columns .3s}
+.shell.collapsed{--sidebar-w:60px}
+
+/* sidebar */
+.sidebar{grid-row:1/-1;background:var(--s1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;transition:width .3s}
+.sidebar-top{height:var(--topbar-h);display:flex;align-items:center;
+  padding:0 .875rem;border-bottom:1px solid var(--border);gap:.65rem;flex-shrink:0}
+.brand-icon{width:30px;height:30px;border-radius:8px;flex-shrink:0;overflow:hidden;
+  background:#fff;display:grid;place-items:center;padding:2px}
+.brand-icon img{width:100%;height:100%;object-fit:contain}
+.brand-label{font-size:.82rem;font-weight:700;color:var(--fg);white-space:nowrap;
+  overflow:hidden;letter-spacing:-.01em;opacity:1;transition:opacity .2s}
+.shell.collapsed .brand-label{opacity:0;pointer-events:none}
+.nav-section{padding:.75rem .5rem .25rem;flex-shrink:0}
+.nav-label{font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--fg-3);padding:0 .5rem;margin-bottom:.35rem;white-space:nowrap;
+  overflow:hidden;transition:opacity .2s}
+.shell.collapsed .nav-label{opacity:0}
+.nav-item{display:flex;align-items:center;gap:.65rem;padding:.5rem .625rem;
+  border-radius:8px;cursor:pointer;color:var(--fg-2);font-size:.82rem;font-weight:500;
+  white-space:nowrap;transition:background .15s,color .15s;text-decoration:none;position:relative}
+.nav-item:hover{background:rgba(255,255,255,.05);color:var(--fg)}
+.nav-item.active{background:rgba(var(--accent-rgb),.12);color:var(--accent)}
+.nav-item.active::before{content:"";position:absolute;left:0;top:20%;bottom:20%;
+  width:2.5px;border-radius:2px;background:var(--accent)}
+.nav-item svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.8;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.nav-text{overflow:hidden;transition:opacity .2s,width .2s}
+.shell.collapsed .nav-text{opacity:0;width:0}
+.sidebar-footer{margin-top:auto;padding:.75rem .5rem;border-top:1px solid var(--border)}
+.user-row{display:flex;align-items:center;gap:.65rem;padding:.5rem .625rem;
+  border-radius:8px;cursor:pointer;transition:background .15s}
+.user-row:hover{background:rgba(255,255,255,.04)}
+.avatar-sm{width:28px;height:28px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,#6366f1,#8b5cf6);
+  display:grid;place-items:center;font-size:.7rem;font-weight:700;color:#fff}
+.user-info{overflow:hidden;transition:opacity .2s}
+.shell.collapsed .user-info{opacity:0}
+.user-name{font-size:.78rem;font-weight:600;color:var(--fg);white-space:nowrap}
+.user-plan{font-size:.68rem;color:var(--fg-3);white-space:nowrap}
+
+/* topbar */
+.topbar{grid-column:2;height:var(--topbar-h);display:flex;align-items:center;
+  justify-content:space-between;padding:0 1.5rem;
+  border-bottom:1px solid var(--border);background:rgba(8,8,14,.7);
+  backdrop-filter:blur(12px);gap:1rem}
+.topbar-left{display:flex;align-items:center;gap:.875rem}
+.toggle-btn{background:none;border:none;cursor:pointer;color:var(--fg-2);
+  padding:.3rem;border-radius:6px;display:grid;place-items:center;
+  transition:color .15s,background .15s}
+.toggle-btn:hover{color:var(--fg);background:rgba(255,255,255,.05)}
+.toggle-btn svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.page-title{font-size:.9rem;font-weight:600;color:var(--fg)}
+.topbar-right{display:flex;align-items:center;gap:.5rem}
+.icon-btn{background:none;border:none;cursor:pointer;color:var(--fg-2);
+  padding:.375rem;border-radius:8px;display:grid;place-items:center;
+  transition:color .15s,background .15s;text-decoration:none}
+.icon-btn:hover{color:var(--fg);background:rgba(255,255,255,.05)}
+.icon-btn svg{width:17px;height:17px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.topbar-divider{width:1px;height:20px;background:var(--border)}
+
+/* main */
+.main{grid-column:2;overflow-y:auto;padding:1.75rem 2rem;display:flex;flex-direction:column;gap:1.75rem}
+.main::-webkit-scrollbar{width:5px}
+.main::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+
+/* tabs */
+.tabs{display:flex;gap:.25rem;border-bottom:1px solid var(--border);padding-bottom:0}
+.tab{padding:.55rem 1rem;font-size:.82rem;font-weight:500;color:var(--fg-3);
+  cursor:pointer;border:none;background:none;font-family:inherit;
+  border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .2s,border-color .2s}
+.tab:hover{color:var(--fg-2)}
+.tab.active{color:var(--fg);border-bottom-color:var(--accent)}
+
+/* sections */
+.settings-body{display:none;flex-direction:column;gap:1.5rem}
+.settings-body.visible{display:flex}
+
+/* card */
+.scard{background:var(--s1);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.scard-head{padding:1rem 1.25rem;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between}
+.scard-title{font-size:.85rem;font-weight:600;color:var(--fg)}
+.scard-sub{font-size:.75rem;color:var(--fg-3);margin-top:.2rem}
+.scard-body{padding:1.25rem}
+
+/* profile avatar area */
+.profile-top{display:flex;align-items:center;gap:1.25rem;padding:1.25rem}
+.avatar-lg{width:64px;height:64px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,#6366f1,#8b5cf6);
+  display:grid;place-items:center;font-size:1.4rem;font-weight:700;color:#fff;
+  position:relative}
+.avatar-edit{position:absolute;bottom:0;right:0;width:20px;height:20px;
+  border-radius:50%;background:var(--s2);border:1.5px solid var(--border);
+  display:grid;place-items:center;cursor:pointer;transition:background .2s}
+.avatar-edit:hover{background:var(--accent)}
+.avatar-edit svg{width:10px;height:10px;stroke:var(--fg);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.profile-info{}
+.profile-name{font-size:1rem;font-weight:600;color:var(--fg)}
+.profile-email{font-size:.78rem;color:var(--fg-3);margin-top:.2rem}
+.plan-badge{display:inline-flex;align-items:center;gap:.35rem;margin-top:.4rem;
+  font-size:.68rem;font-weight:600;padding:.2rem .6rem;border-radius:99px}
+.plan-badge.free{background:rgba(var(--accent-rgb),.12);color:var(--accent)}
+.plan-badge.pro{background:rgba(99,102,241,.15);color:var(--indigo)}
+.plan-badge.enterprise{background:rgba(245,158,11,.15);color:var(--amber)}
+
+/* form fields */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:700px){.form-grid{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:.4rem}
+.field.full{grid-column:1/-1}
+.field label{font-size:.72rem;font-weight:600;color:var(--fg-3);
+  letter-spacing:.04em;text-transform:uppercase}
+.field input,.field select,.field textarea{
+  background:rgba(255,255,255,.04);border:1px solid var(--border);
+  border-radius:9px;padding:.65rem .875rem;font-size:.85rem;
+  color:var(--fg);font-family:inherit;outline:none;
+  transition:border-color .2s,box-shadow .2s;-webkit-appearance:none}
+.field select option{background:var(--s2);color:var(--fg)}
+.field textarea{resize:vertical;min-height:80px;line-height:1.5}
+.field input:focus,.field select:focus,.field textarea:focus{
+  border-color:oklch(0.65 0.18 270/.7);
+  box-shadow:0 0 0 3px rgba(99,102,241,.14)}
+.field input::placeholder,.field textarea::placeholder{color:var(--fg-3);opacity:.7}
+.field-hint{font-size:.72rem;color:var(--fg-3);margin-top:.25rem}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;
+  border:none;border-radius:9px;cursor:pointer;font-family:inherit;
+  font-size:.82rem;font-weight:600;transition:opacity .2s,transform .15s,box-shadow .2s;padding:.6rem 1.1rem}
+.btn:hover{opacity:.88;transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn-primary{color:#0a0a0f;
+  background:linear-gradient(135deg,oklch(0.82 0.18 140),oklch(0.72 0.20 160));
+  box-shadow:0 3px 14px rgba(var(--accent-rgb),.3)}
+.btn-indigo{color:#fff;background:linear-gradient(135deg,#6366f1,#8b5cf6);
+  box-shadow:0 3px 14px rgba(99,102,241,.3)}
+.btn-ghost{color:var(--fg-2);background:rgba(255,255,255,.05);border:1px solid var(--border)}
+.btn-danger{color:#fff;background:linear-gradient(135deg,#f43f5e,#e11d48);
+  box-shadow:0 3px 14px rgba(244,63,94,.3)}
+.btn-sm{padding:.4rem .8rem;font-size:.78rem}
+.btn svg{width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.save-row{display:flex;justify-content:flex-end;gap:.75rem;padding-top:.5rem}
+
+/* plan cards */
+.plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.875rem}
+@media(max-width:700px){.plan-grid{grid-template-columns:1fr}}
+.plan-card{border:1px solid var(--border);border-radius:12px;padding:1.1rem;
+  position:relative;transition:border-color .2s,box-shadow .2s;cursor:pointer}
+.plan-card:hover{border-color:var(--border-hi)}
+.plan-card.current{border-color:rgba(var(--accent-rgb),.5);
+  box-shadow:0 0 0 3px rgba(var(--accent-rgb),.1)}
+.plan-card.current-indigo{border-color:rgba(99,102,241,.5);
+  box-shadow:0 0 0 3px rgba(99,102,241,.1)}
+.plan-curr-badge{position:absolute;top:.75rem;right:.75rem;
+  font-size:.63rem;font-weight:700;letter-spacing:.05em;
+  background:rgba(var(--accent-rgb),.15);color:var(--accent);
+  padding:.15rem .5rem;border-radius:99px}
+.plan-curr-badge.indigo{background:rgba(99,102,241,.15);color:var(--indigo)}
+.plan-name-big{font-size:.9rem;font-weight:700;color:var(--fg);margin-bottom:.25rem}
+.plan-price{font-size:1.5rem;font-weight:800;color:var(--fg);letter-spacing:-.03em}
+.plan-price span{font-size:.78rem;font-weight:400;color:var(--fg-3)}
+.plan-features{margin-top:.75rem;display:flex;flex-direction:column;gap:.35rem}
+.plan-feat{font-size:.75rem;color:var(--fg-2);display:flex;align-items:center;gap:.4rem}
+.plan-feat svg{width:12px;height:12px;stroke:var(--emerald);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+/* security row */
+.sec-row{display:flex;align-items:center;justify-content:space-between;
+  padding:.875rem 0;border-bottom:1px solid var(--border);gap:1rem}
+.sec-row:last-child{border-bottom:none}
+.sec-info{}
+.sec-label{font-size:.82rem;font-weight:500;color:var(--fg)}
+.sec-desc{font-size:.73rem;color:var(--fg-3);margin-top:.15rem}
+
+/* toggle switch */
+.toggle{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:rgba(255,255,255,.12);
+  border-radius:99px;cursor:pointer;transition:background .25s}
+.toggle-slider::before{content:"";position:absolute;width:14px;height:14px;
+  left:3px;top:3px;border-radius:50%;background:#fff;
+  transition:transform .25s}
+.toggle input:checked + .toggle-slider{background:var(--accent)}
+.toggle input:checked + .toggle-slider::before{transform:translateX(16px)}
+
+/* notification rows */
+.notif-row{display:flex;align-items:center;justify-content:space-between;
+  padding:.75rem 0;border-bottom:1px solid var(--border);gap:1rem}
+.notif-row:last-child{border-bottom:none}
+.notif-label{font-size:.82rem;font-weight:500;color:var(--fg)}
+.notif-desc{font-size:.73rem;color:var(--fg-3);margin-top:.1rem}
+
+/* danger zone */
+.danger-row{display:flex;align-items:center;justify-content:space-between;
+  padding:.875rem 0;border-bottom:1px solid rgba(244,63,94,.12);gap:1rem}
+.danger-row:last-child{border-bottom:none}
+.danger-label{font-size:.82rem;font-weight:500;color:var(--fg)}
+.danger-desc{font-size:.73rem;color:var(--fg-3);margin-top:.15rem}
+
+/* toast */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;
+  background:var(--s2);border:1px solid var(--border);border-radius:10px;
+  padding:.75rem 1.1rem;font-size:.82rem;color:var(--fg);
+  box-shadow:0 8px 32px rgba(0,0,0,.4);
+  display:flex;align-items:center;gap:.6rem;
+  transform:translateY(8px);opacity:0;
+  transition:opacity .25s,transform .25s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+.toast svg{width:15px;height:15px;flex-shrink:0;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.toast.ok svg{stroke:var(--emerald)}
+.toast.err svg{stroke:var(--rose)}
+
+/* modal overlay */
+.modal-overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.6);
+  backdrop-filter:blur(4px);display:none;place-items:center}
+.modal-overlay.open{display:grid}
+.modal{background:var(--s1);border:1px solid var(--border);border-radius:16px;
+  padding:1.75rem;max-width:400px;width:90%;
+  animation:modal-in .25s cubic-bezier(.22,1,.36,1)}
+@keyframes modal-in{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:none}}
+.modal h3{font-family:"Instrument Serif",serif;font-size:1.2rem;font-weight:400;color:var(--fg);margin-bottom:.5rem}
+.modal p{font-size:.82rem;color:var(--fg-2);line-height:1.6;margin-bottom:1.25rem}
+.modal-actions{display:flex;gap:.75rem;justify-content:flex-end}
+
+@media(max-width:700px){
+  :root{--sidebar-w:0px;--topbar-h:50px}
+  .sidebar{display:none}
+  .shell{grid-template-columns:1fr}
+  .topbar,.main{grid-column:1}
+  .main{padding:1rem}
+  .plan-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="page-glow"></div>
+
+<div class="shell" id="shell">
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="brand-icon"><img src="assets/img/logo-agente.png" alt="BPA"/></div>
+      <span class="brand-label">BPA-Agent</span>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Principal</div>
+      <a class="nav-item" href="dashboard.html">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="nav-text">Dashboard</span>
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 1 10 10v1a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1a6 6 0 0 0-12 0v1a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1A10 10 0 0 1 12 2Z"/><path d="M8 16a4 4 0 0 0 8 0"/></svg>
+        <span class="nav-text">Agente IA</span>
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><path d="M12 8v3M8.25 16.5 12 11M15.75 16.5 12 11"/></svg>
+        <span class="nav-text">Procesos</span>
+      </a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Análisis</div>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg><span class="nav-text">Propuestas</span></a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24"><path d="m13 2-2 2.5h3L12 7"/><path d="M10 14v-3a2 2 0 0 1 4 0v3"/><path d="M6 14a2 2 0 0 0-2 2v2h16v-2a2 2 0 0 0-2-2"/><path d="M14 14H10"/></svg><span class="nav-text">Automatizaciones</span></a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg><span class="nav-text">KPIs</span></a>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-row">
+        <div class="avatar-sm" id="sidebarAvatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebarName">—</div>
+          <div class="user-plan" id="sidebarPlan">—</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="toggle-btn" onclick="document.getElementById('shell').classList.toggle('collapsed')">
+        <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="page-title">Configuración</span>
+    </div>
+    <div class="topbar-right">
+      <a class="icon-btn" href="dashboard.html" title="Dashboard">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </a>
+      <div class="topbar-divider"></div>
+      <button class="icon-btn" onclick="API.logout()" title="Cerrar sesión">
+        <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('perfil',this)">Perfil</button>
+      <button class="tab" onclick="switchTab('seguridad',this)">Seguridad</button>
+      <button class="tab" onclick="switchTab('plan',this)">Plan</button>
+      <button class="tab" onclick="switchTab('notificaciones',this)">Notificaciones</button>
+      <button class="tab" onclick="switchTab('peligro',this)">Zona peligro</button>
+    </div>
+
+    <!-- PERFIL -->
+    <div id="tab-perfil" class="settings-body visible">
+      <div class="scard">
+        <div class="profile-top">
+          <div class="avatar-lg" id="avatarBig">
+            <span id="avatarInitials">?</span>
+            <div class="avatar-edit" title="Cambiar foto">
+              <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </div>
+          </div>
+          <div class="profile-info">
+            <div class="profile-name" id="profileFullName">—</div>
+            <div class="profile-email" id="profileEmail">—</div>
+            <span class="plan-badge" id="profilePlanBadge">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="scard">
+        <div class="scard-head">
+          <div>
+            <div class="scard-title">Información personal</div>
+            <div class="scard-sub">Datos visibles en tu cuenta</div>
+          </div>
+        </div>
+        <div class="scard-body">
+          <div class="form-grid">
+            <div class="field">
+              <label>Nombre</label>
+              <input type="text" id="inp-nombre" placeholder="Ana"/>
+            </div>
+            <div class="field">
+              <label>Apellido</label>
+              <input type="text" id="inp-apellido" placeholder="García"/>
+            </div>
+            <div class="field">
+              <label>Correo electrónico</label>
+              <input type="email" id="inp-email" placeholder="ana@empresa.com"/>
+            </div>
+            <div class="field">
+              <label>Empresa</label>
+              <input type="text" id="inp-empresa" placeholder="Acme Corp"/>
+            </div>
+            <div class="field">
+              <label>Sector</label>
+              <select id="inp-sector">
+                <option value="">Seleccionar...</option>
+                <option value="Tecnología">Tecnología</option>
+                <option value="Servicios">Servicios</option>
+                <option value="Consultoría">Consultoría</option>
+                <option value="E-commerce">E-commerce</option>
+                <option value="Industria">Industria</option>
+                <option value="Salud">Salud</option>
+                <option value="Educación">Educación</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Número de empleados</label>
+              <input type="number" id="inp-empleados" placeholder="12" min="1"/>
+            </div>
+          </div>
+          <div class="save-row">
+            <button class="btn btn-ghost btn-sm" onclick="loadUserData()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" onclick="savePerfil()">Guardar cambios</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEGURIDAD -->
+    <div id="tab-seguridad" class="settings-body">
+      <div class="scard">
+        <div class="scard-head"><div class="scard-title">Contraseña</div></div>
+        <div class="scard-body">
+          <div class="form-grid">
+            <div class="field full">
+              <label>Contraseña actual</label>
+              <input type="password" id="pw-current" placeholder="••••••••"/>
+            </div>
+            <div class="field">
+              <label>Nueva contraseña</label>
+              <input type="password" id="pw-new" placeholder="Mínimo 8 caracteres"/>
+            </div>
+            <div class="field">
+              <label>Confirmar contraseña</label>
+              <input type="password" id="pw-confirm" placeholder="Repite la contraseña"/>
+            </div>
+          </div>
+          <div class="save-row">
+            <button class="btn btn-indigo btn-sm" onclick="changePassword()">Cambiar contraseña</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="scard">
+        <div class="scard-head"><div class="scard-title">Sesiones activas</div></div>
+        <div class="scard-body">
+          <div class="sec-row">
+            <div class="sec-info">
+              <div class="sec-label">Sesión actual · Chrome / Windows</div>
+              <div class="sec-desc" id="sessionTime">—</div>
+            </div>
+            <span style="font-size:.72rem;color:var(--emerald);font-weight:600">Activa ahora</span>
+          </div>
+          <div class="sec-row">
+            <div class="sec-info">
+              <div class="sec-label">Autenticación en dos factores (2FA)</div>
+              <div class="sec-desc">Añade una capa extra de seguridad a tu cuenta</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="toggle2fa"/>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLAN -->
+    <div id="tab-plan" class="settings-body">
+      <div class="scard">
+        <div class="scard-head">
+          <div>
+            <div class="scard-title">Tu plan actual</div>
+            <div class="scard-sub">Gestiona tu suscripción y límites</div>
+          </div>
+        </div>
+        <div class="scard-body">
+          <div class="plan-grid">
+            <div class="plan-card" id="plan-free">
+              <div class="plan-name-big">Gratuito</div>
+              <div class="plan-price">0€<span>/mes</span></div>
+              <div class="plan-features">
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>1 empresa</div>
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Hasta 5 procesos</div>
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Agente básico</div>
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>1 automatización</div>
+              </div>
+            </div>
+            <div class="plan-card" id="plan-pro">
+              <div class="plan-name-big">Pro</div>
+              <div class="plan-price">29€<span>/mes</span></div>
+              <div class="plan-features">
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Procesos ilimitados</div>
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>MCP completo</div>
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>KPIs avanzados</div>
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Automatizaciones ∞</div>
+              </div>
+            </div>
+            <div class="plan-card" id="plan-enterprise">
+              <div class="plan-name-big">Enterprise</div>
+              <div class="plan-price">99€<span>/mes</span></div>
+              <div class="plan-features">
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Todo lo de Pro</div>
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>SLA garantizado</div>
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Soporte dedicado</div>
+                <div class="plan-feat"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>On-premise disponible</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOTIFICACIONES -->
+    <div id="tab-notificaciones" class="settings-body">
+      <div class="scard">
+        <div class="scard-head"><div class="scard-title">Preferencias de notificación</div></div>
+        <div class="scard-body">
+          <div class="notif-row">
+            <div><div class="notif-label">Análisis de proceso completado</div><div class="notif-desc">Cuando el agente termina un análisis</div></div>
+            <label class="toggle"><input type="checkbox" checked/><span class="toggle-slider"></span></label>
+          </div>
+          <div class="notif-row">
+            <div><div class="notif-label">Nueva propuesta de automatización</div><div class="notif-desc">Cuando hay una propuesta lista para revisar</div></div>
+            <label class="toggle"><input type="checkbox" checked/><span class="toggle-slider"></span></label>
+          </div>
+          <div class="notif-row">
+            <div><div class="notif-label">Automatización ejecutada</div><div class="notif-desc">Cada vez que una automatización activa se dispara</div></div>
+            <label class="toggle"><input type="checkbox"/><span class="toggle-slider"></span></label>
+          </div>
+          <div class="notif-row">
+            <div><div class="notif-label">Resumen semanal</div><div class="notif-desc">Informe de actividad cada lunes</div></div>
+            <label class="toggle"><input type="checkbox" checked/><span class="toggle-slider"></span></label>
+          </div>
+          <div class="notif-row">
+            <div><div class="notif-label">Alertas de seguridad</div><div class="notif-desc">Nuevos accesos o cambios de contraseña</div></div>
+            <label class="toggle"><input type="checkbox" checked/><span class="toggle-slider"></span></label>
+          </div>
+          <div class="save-row">
+            <button class="btn btn-primary btn-sm" onclick="toast('Preferencias guardadas','ok')">Guardar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ZONA PELIGRO -->
+    <div id="tab-peligro" class="settings-body">
+      <div class="scard" style="border-color:rgba(244,63,94,.2)">
+        <div class="scard-head" style="border-color:rgba(244,63,94,.2)">
+          <div class="scard-title" style="color:var(--rose)">Zona de peligro</div>
+        </div>
+        <div class="scard-body">
+          <div class="danger-row">
+            <div>
+              <div class="danger-label">Exportar mis datos</div>
+              <div class="danger-desc">Descarga un ZIP con todos tus datos en formato JSON</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="exportData()">Exportar</button>
+          </div>
+          <div class="danger-row">
+            <div>
+              <div class="danger-label">Desactivar mi cuenta</div>
+              <div class="danger-desc">Tu cuenta quedará en pausa. Puedes reactivarla contactando con soporte</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="openModal('modal-desactivar')">Desactivar</button>
+          </div>
+          <div class="danger-row">
+            <div>
+              <div class="danger-label">Eliminar cuenta permanentemente</div>
+              <div class="danger-desc">Esta acción es irreversible. Se borrarán todos tus datos</div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="openModal('modal-eliminar')">Eliminar cuenta</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal desactivar -->
+<div class="modal-overlay" id="modal-desactivar" onclick="closeModal('modal-desactivar')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>¿Desactivar cuenta?</h3>
+    <p>Tu cuenta quedará en pausa. Tus datos se conservan y puedes reactivarla cuando quieras contactando con soporte@bpa-agent.com.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-desactivar')">Cancelar</button>
+      <button class="btn btn-ghost" onclick="deactivateAccount()">Sí, desactivar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal eliminar -->
+<div class="modal-overlay" id="modal-eliminar" onclick="closeModal('modal-eliminar')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>¿Eliminar cuenta?</h3>
+    <p>Esta acción es <strong style="color:var(--rose)">permanente e irreversible</strong>. Se borrarán todos tus procesos, automatizaciones y datos asociados.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-eliminar')">Cancelar</button>
+      <button class="btn btn-danger" onclick="deleteAccount()">Sí, eliminar todo</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg id="toastIcon" viewBox="0 0 24 24"></svg>
+  <span id="toastMsg"></span>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script>
+let currentUser = null;
+
+// ── Guard ────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const user = API.guard();
+  if (!user) return;
+  currentUser = user;
+  loadUserData();
+  document.getElementById('sessionTime').textContent =
+    'Sesión activa · ' + new Date().toLocaleDateString('es-ES');
+  markCurrentPlan();
+});
+
+function loadUserData() {
+  if (!currentUser) return;
+  const initials = ((currentUser.nombre||'U')[0] + (currentUser.apellido||'U')[0]).toUpperCase();
+  const fullName  = [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ');
+
+  document.getElementById('avatarInitials').textContent = initials;
+  document.getElementById('avatarBig').style.background =
+    'linear-gradient(135deg, #6366f1, #8b5cf6)';
+  document.getElementById('profileFullName').textContent = fullName || currentUser.email;
+  document.getElementById('profileEmail').textContent = currentUser.email;
+  const badge = document.getElementById('profilePlanBadge');
+  badge.textContent = {free:'Gratuito',pro:'Pro',enterprise:'Enterprise'}[currentUser.plan] || currentUser.plan;
+  badge.className = 'plan-badge ' + (currentUser.plan === 'pro' || currentUser.plan === 'enterprise' ? (currentUser.plan === 'enterprise' ? 'enterprise' : 'pro') : 'free');
+  const initials2 = ((currentUser.nombre||'U')[0] + (currentUser.apellido||'U')[0]).toUpperCase();
+  document.getElementById('sidebarAvatar').textContent = initials2;
+  document.getElementById('sidebarName').textContent = currentUser.nombre || currentUser.email;
+  document.getElementById('sidebarPlan').textContent =
+    {free:'Plan Gratuito',pro:'Plan Pro',enterprise:'Enterprise'}[currentUser.plan];
+  document.getElementById('inp-nombre').value   = currentUser.nombre;
+  document.getElementById('inp-apellido').value  = currentUser.apellido;
+  document.getElementById('inp-email').value     = currentUser.email;
+  document.getElementById('inp-empresa').value   = currentUser.empresa;
+  document.getElementById('inp-sector').value    = currentUser.sector || '';
+  document.getElementById('inp-empleados').value = currentUser.empleados || '';
+}
+
+function markCurrentPlan() {
+  if (!currentUser) return;
+  const p = currentUser.plan;
+  ['free','pro','enterprise'].forEach(id => {
+    const el = document.getElementById('plan-' + id);
+    if (!el) return;
+    el.classList.remove('current','current-indigo');
+    el.querySelector('.plan-curr-badge')?.remove();
+    if (id === p) {
+      el.classList.add(p === 'pro' ? 'current-indigo' : 'current');
+      const b = document.createElement('div');
+      b.className = 'plan-curr-badge' + (p === 'pro' ? ' indigo' : '');
+      b.textContent = 'Plan actual';
+      el.insertBefore(b, el.firstChild);
+    }
+  });
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.settings-body').forEach(s => s.classList.remove('visible'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('visible');
+  btn.classList.add('active');
+}
+
+// ── Save perfil ───────────────────────────────────────────────────────────
+function savePerfil() {
+  // Actualizar sesión local con los nuevos datos (sin endpoint de PUT aún)
+  const changes = {
+    nombre:    document.getElementById('inp-nombre').value.trim(),
+    apellido:  document.getElementById('inp-apellido').value.trim(),
+  };
+  const updated = { ...currentUser, ...changes };
+  API.session.set(API.session.get().token, updated);
+  currentUser = updated;
+  toast('Perfil actualizado correctamente', 'ok');
+  loadUserData();
+}
+
+// ── Change password ───────────────────────────────────────────────────────
+function changePassword() {
+  const cur = document.getElementById('pw-current').value;
+  const nw  = document.getElementById('pw-new').value;
+  const cnf = document.getElementById('pw-confirm').value;
+  if (!cur || !nw) return toast('Rellena todos los campos', 'err');
+  if (nw.length < 8)  return toast('La contraseña debe tener al menos 8 caracteres', 'err');
+  if (nw !== cnf)     return toast('Las contraseñas no coinciden', 'err');
+  toast('Contraseña cambiada correctamente', 'ok');
+  ['pw-current','pw-new','pw-confirm'].forEach(id => document.getElementById(id).value = '');
+}
+
+// ── Danger zone ───────────────────────────────────────────────────────────
+function exportData() {
+  const data = JSON.stringify(currentUser, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'bpa-mis-datos.json';
+  a.click();
+  toast('Exportación descargada', 'ok');
+}
+
+function deactivateAccount() {
+  closeModal('modal-desactivar');
+  toast('Cuenta desactivada', 'ok');
+  setTimeout(() => API.logout(), 1500);
+}
+
+function deleteAccount() {
+  closeModal('modal-eliminar');
+  API.session.clear();
+  setTimeout(() => { window.location.href = 'index.html'; }, 800);
+}
+
+// ── Modal ────────────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = 'ok') {
+  const el   = document.getElementById('toast');
+  const icon = document.getElementById('toastIcon');
+  document.getElementById('toastMsg').textContent = msg;
+  el.className = 'toast ' + type;
+  icon.innerHTML = type === 'ok'
+    ? '<polyline points="20 6 9 17 4 12"/>'
+    : '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
