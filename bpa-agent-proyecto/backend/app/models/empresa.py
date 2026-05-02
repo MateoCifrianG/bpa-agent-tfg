@@ -21,3 +21,4 @@ class Empresa(Base):
     automatizaciones: Mapped[list["Automatizacion"]] = relationship(back_populates="empresa", cascade="all, delete-orphan")
     conversaciones:  Mapped[list["Conversacion"]] = relationship(back_populates="empresa", cascade="all, delete-orphan")
     kpis:            Mapped[list["KPI"]]       = relationship(back_populates="empresa", cascade="all, delete-orphan")
+    credenciales:    Mapped[list["Credencial"]] = relationship(back_populates="empresa", cascade="all, delete-orphan")

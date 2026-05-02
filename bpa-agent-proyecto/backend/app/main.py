@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import create_tables
-from app.routers import auth
+from app.routers import auth, credenciales, empresas, procesos, kpis, automatizaciones, agente, users
 
 
 @asynccontextmanager
@@ -37,6 +37,13 @@ else:
     )
 
 app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(empresas.router)
+app.include_router(procesos.router)
+app.include_router(kpis.router)
+app.include_router(automatizaciones.router)
+app.include_router(agente.router)
+app.include_router(credenciales.router)
 
 
 @app.get("/health")
