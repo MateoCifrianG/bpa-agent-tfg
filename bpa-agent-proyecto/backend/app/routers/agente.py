@@ -1,13 +1,13 @@
 """
-agente.py — BPA-Agent chat con acciones reales en BD.
+agente.py — BPA-Agent v3: IA con estado de conversación, NLP preciso y BD rica.
 
-El agente entiende lenguaje natural y puede:
-  • Crear / eliminar procesos, KPIs y automatizaciones
-  • Analizar datos reales de la empresa
-  • Responder preguntas de negocio con contexto
-  • Variar el lenguaje para parecer más humano
-Sin coste de API externa (usa _smart_response por defecto).
-Si se configura ANTHROPIC_API_KEY, usa Claude como backend.
+Mejoras v3:
+  • State machine: rastrea qué preguntó el bot en el turno anterior
+  • NLP defensivo: no crea si el mensaje es una RESPUESTA a la pregunta anterior
+  • Extracción de intención segura: require verbo de creación explícito
+  • Respuestas afirmativas/negativas detectadas correctamente
+  • KB dinámica: el agente aprende el contexto de la empresa de la BD
+  • Variaciones de lenguaje naturales en todas las respuestas
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ import random
 import re
 from datetime import datetime
 from typing import Any, Optional
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -36,6 +35,7 @@ from app.models.user import User
 
 router = APIRouter(prefix="/api/agente", tags=["agente"])
 
+
 # ─────────────────────────── Schemas ─────────────────────────────
 
 class MensajeIn(BaseModel):
@@ -51,11 +51,10 @@ class MensajeOut(BaseModel):
     fase: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
     model_config = {"from_attributes": True}
 
 
-# ─────────────────────── Helpers BD ─────────────────────────────
+# ──────────────────────── Helpers BD ─────────────────────────────
 
 async def _get_empresa(db: AsyncSession, user: User) -> Empresa:
     result = await db.execute(select(Empresa).where(Empresa.user_id == user.id))
@@ -67,112 +66,147 @@ async def _get_empresa(db: AsyncSession, user: User) -> Empresa:
 
 async def _load_all(db: AsyncSession, empresa_id: str):
     proc_res = await db.execute(select(Proceso).where(Proceso.empresa_id == empresa_id))
-    kpi_res = await db.execute(select(KPI).where(KPI.empresa_id == empresa_id))
+    kpi_res  = await db.execute(select(KPI).where(KPI.empresa_id == empresa_id))
     auto_res = await db.execute(select(Automatizacion).where(Automatizacion.empresa_id == empresa_id))
-    return (
-        proc_res.scalars().all(),
-        kpi_res.scalars().all(),
-        auto_res.scalars().all(),
-    )
+    return proc_res.scalars().all(), kpi_res.scalars().all(), auto_res.scalars().all()
 
 
-# ───────────────────── Contexto del historial ────────────────────
+# ──────────────────────── Análisis del historial ─────────────────
 
-def _last_bot_msg(historial: list) -> str:
+def _last_bot(historial: list) -> str:
+    """Último mensaje del asistente."""
     for m in reversed(historial):
         if m.get("role") == "assistant":
             return m.get("content", "")
     return ""
 
 
-def _extract_bold_names(text: str) -> list[str]:
-    """Extrae todos los nombres en **negrita** del texto."""
+def _last_user(historial: list, skip_last: bool = True) -> str:
+    """Penúltimo mensaje del usuario (el anterior al actual)."""
+    users = [m for m in historial if m.get("role") == "user"]
+    if skip_last and len(users) >= 2:
+        return users[-2].get("content", "")
+    if users:
+        return users[-1].get("content", "")
+    return ""
+
+
+def _bold_names(text: str) -> list[str]:
     return re.findall(r"\*\*([^*\n]{2,80})\*\*", text)
 
 
-def _find_proceso(procesos, nombre_buscado: str) -> Optional[Proceso]:
-    """Búsqueda flexible: exacta → contiene → comienza por."""
-    nb = nombre_buscado.lower().strip()
-    for p in procesos:
-        if p.nombre.lower() == nb:
-            return p
-    for p in procesos:
-        if nb in p.nombre.lower() or p.nombre.lower().startswith(nb[:6]):
-            return p
-    return None
+class ConvState:
+    """
+    Estado inferido de la última respuesta del bot.
+    Permite saber si el bot hizo una pregunta y de qué tipo.
+    """
+    IDLE            = "idle"
+    ASKED_SCORE     = "asked_score"        # "¿Le asigno un score?"
+    ASKED_CREATE    = "asked_create"       # "¿Creo X?"
+    ASKED_ANALYZE   = "asked_analyze"      # "¿Analizo X?"
+    ASKED_AUTO      = "asked_auto"         # "¿Creo automatización para X?"
+    JUST_CREATED    = "just_created"       # acaba de crear algo
+    JUST_ANALYZED   = "just_analyzed"      # acaba de analizar
 
 
-def _find_auto(autos, nombre_buscado: str) -> Optional[Automatizacion]:
-    nb = nombre_buscado.lower().strip()
-    for a in autos:
-        if a.nombre.lower() == nb:
-            return a
-    for a in autos:
-        if nb in a.nombre.lower():
-            return a
-    return None
+def _detect_state(last_bot: str) -> tuple[str, str]:
+    """
+    Detecta el estado de la conversación y el nombre de entidad en contexto.
+    Returns (state, entity_name_or_empty).
+    """
+    lb = last_bot.lower()
+    names = _bold_names(last_bot)
+    entity = names[0] if names else ""
+
+    if any(w in lb for w in ["asigno un score", "le asigne un score", "añadimos el score", "ponemos el score", "score inicial", "lo hacemos"]):
+        return ConvState.ASKED_SCORE, entity
+    if any(w in lb for w in ["¿creo", "¿lo creo", "¿quieres que cree", "¿creamos"]):
+        return ConvState.ASKED_CREATE, entity
+    if any(w in lb for w in ["¿analizo", "¿quieres que analice", "¿empezamos por", "análisis en detalle"]):
+        return ConvState.ASKED_ANALYZE, entity
+    if any(w in lb for w in ["automatización para", "¿quiero que cree una automatiz", "propongo una automatiz"]):
+        return ConvState.ASKED_AUTO, entity
+    if "he registrado" in lb or "he creado" in lb or "✅" in lb:
+        return ConvState.JUST_CREATED, entity
+    if "análisis de" in lb or "🔍" in lb or "score:" in lb:
+        return ConvState.JUST_ANALYZED, entity
+
+    return ConvState.IDLE, entity
 
 
-def _find_kpi(kpis, nombre_buscado: str) -> Optional[KPI]:
-    nb = nombre_buscado.lower().strip()
-    for k in kpis:
-        if k.nombre.lower() == nb:
-            return k
-    for k in kpis:
-        if nb in k.nombre.lower():
-            return k
-    return None
+# ──────────────────────── Detección de intención ─────────────────
+
+# Palabras que señalan CLARAMENTE intención de crear
+_STRONG_CREATE = re.compile(
+    r"\b(crea(?:r|me|nos)?|añade?(?:r|me|nos)?|agrega?(?:r|me|nos)?|"
+    r"registra?(?:r|me|nos)?|da(?:me|nos)\s+de\s+alta|quiero\s+(?:crear|añadir|un nuevo|una nueva))\b",
+    re.IGNORECASE,
+)
+
+# Palabras que señalan que el mensaje es una RESPUESTA, no un comando
+_IS_REPLY = re.compile(
+    r"^(pero|no|sí|si|claro|ok|vale|espera|después|depues|ahora no|no puedo|"
+    r"todavía no|aún no|aun no|ya lo|no he|no lo|ni idea|más tarde|luego|bueno|"
+    r"lo que sea|eso|no creo|ya|de momento|tampoco|nada|eso no|no es así|"
+    r"no entiendes|perdona|me refiero|lo que dije|quería decir)\b",
+    re.IGNORECASE,
+)
+
+# Palabras de afirmación
+_YES = re.compile(r"\b(sí|si|sip|dale|claro|venga|hazlo|confirmo|ok|okay|por favor|porfavor|perfecto|adelante|genial)\b", re.IGNORECASE)
+_NO  = re.compile(r"\b(no|nope|paso|mejor no|ahora no|no quiero|no gracias|déjalo|dejalo|no hace falta|no es necesario)\b", re.IGNORECASE)
 
 
-# ────────────────── Parsers de lenguaje natural ──────────────────
-
-# Palabras que indican acción de creación
-_CREATE_WORDS = r"crea(?:r)?|añade?(?:r)?|agrega?(?:r)?|registra?(?:r)?|nueva?|nuevo|dame|pon(?:me)?|incluye?(?:r)?"
-# Palabras que indican eliminación
-_DELETE_WORDS = r"elimina?(?:r)?|borra?(?:r)?|quita?(?:r)?|suprime?(?:r)?|elimina|borra"
-
-# Patrones para detectar nombre entre comillas o después de "de/llamado/para"
-_NAME_PATTERNS = [
-    r'"([^"]{2,80})"',
-    r"'([^']{2,80})'",
-    r"llamad[oa]\s+(.{2,60}?)(?:\s+con|\s+para|\s+en|\s*$)",
-    r"llamad[oa]s?\s+(.{2,60}?)(?:\s+con|\s+para|\s+en|\s*$)",
-    r"de\s+(.{2,60}?)(?:\s+con\s+|\s+para\s+|\s+en\s+|\s+y\s+|\s*$)",
-    r"para\s+(.{2,60}?)(?:\s+con\s+|\s+en\s+|\s*$)",
-    r":\s*(.{2,60}?)(?:\s*$)",
-]
+def _is_strong_create(msg: str) -> bool:
+    """True si el mensaje tiene un verbo de creación explícito."""
+    return bool(_STRONG_CREATE.search(msg))
 
 
-def _extract_name(msg: str, after_keyword: Optional[str] = None) -> Optional[str]:
-    """Extrae el nombre de la entidad a crear/buscar del mensaje."""
+def _is_reply_not_command(msg: str) -> bool:
+    """True si el mensaje parece una respuesta conversacional, no un comando."""
+    msg_strip = msg.strip().lower()
+    # Corto y empieza por palabra de respuesta
+    if _IS_REPLY.match(msg_strip):
+        return True
+    # Mensaje corto sin verbo de acción fuerte
+    if len(msg_strip) < 60 and not _is_strong_create(msg_strip):
+        # Tiene "proceso" pero también "no" o frase negativa → respuesta
+        if re.search(r"\bno\b|\bno\s", msg_strip) and any(w in msg_strip for w in ["proceso", "score", "kpi", "auto"]):
+            return True
+    return False
+
+
+def _extract_name_from(msg: str, after_kws: list[str]) -> Optional[str]:
+    """Extrae el nombre de la entidad después de una lista de keywords."""
     text = msg
-    if after_keyword:
-        # Quedarse con la parte del mensaje después del keyword
-        idx = msg.lower().find(after_keyword.lower())
+
+    # 1. Comillas
+    m = re.search(r'["\'«»]([^"\'«»]{2,80})["\'«»]', text)
+    if m:
+        return m.group(1).strip()
+
+    # 2. Después de keywords
+    for kw in after_kws:
+        idx = text.lower().find(kw.lower())
         if idx >= 0:
-            text = msg[idx + len(after_keyword):]
+            remainder = text[idx + len(kw):].strip(" ,.:·-")
+            # quitar stop words al inicio
+            remainder = re.sub(r"^(de|un|una|el|la|para|nuevo|nueva|llamado|llamada)\s+", "", remainder, flags=re.IGNORECASE)
+            # tomar hasta un separador
+            chunk = re.split(r"\s+(?:con|para|en|y|,|que|a|por)\s+", remainder, maxsplit=1)[0]
+            chunk = chunk.strip(" ,.")
+            if 2 < len(chunk) <= 100:
+                return chunk.capitalize()
 
-    text = text.strip(" ,.")
+    # 3. Todo el texto sin stop words iniciales (si es corto)
+    cleaned = re.sub(r"^(el|la|los|las|un|una|unos|unas|mi|mis|de|para)\s+", "", text.lower()).strip()
+    if 3 <= len(cleaned) <= 80:
+        return cleaned.capitalize()
 
-    for pat in _NAME_PATTERNS:
-        m = re.search(pat, text, re.IGNORECASE)
-        if m:
-            candidate = m.group(1).strip(" ,.")
-            # Descartar si es demasiado genérico
-            if len(candidate) > 2 and candidate.lower() not in (
-                "eso", "esto", "aquí", "ahí", "algo", "nada", "todo"
-            ):
-                return candidate[:100]
-
-    # Último recurso: si quedan entre 3-80 chars y no empieza por stop-word
-    text = re.sub(r"^(el|la|los|las|un|una|unos|unas|mi|mis|tu|sus)\s+", "", text.lower())
-    if 3 <= len(text) <= 80:
-        return text.strip(" ,.").capitalize()
     return None
 
 
 def _extract_score(msg: str) -> Optional[int]:
-    """Extrae un número de score (0-100) del mensaje."""
     m = re.search(r"\b([0-9]{1,3})\b", msg)
     if m:
         v = int(m.group(1))
@@ -181,14 +215,52 @@ def _extract_score(msg: str) -> Optional[int]:
     return None
 
 
-# ───────────────── Respuestas variadas por intento ───────────────
+def _find_proceso(procesos, name: str) -> Optional[Proceso]:
+    if not name:
+        return None
+    n = name.lower().strip()
+    for p in procesos:
+        if p.nombre.lower() == n:
+            return p
+    for p in procesos:
+        if n in p.nombre.lower() or p.nombre.lower().startswith(n[:min(6, len(n))]):
+            return p
+    return None
 
-def _r(*opciones: str) -> str:
-    """Selecciona aleatoriamente entre las opciones de respuesta."""
-    return random.choice(opciones)
+
+def _find_kpi(kpis, name: str) -> Optional[KPI]:
+    if not name:
+        return None
+    n = name.lower().strip()
+    for k in kpis:
+        if k.nombre.lower() == n:
+            return k
+    for k in kpis:
+        if n in k.nombre.lower():
+            return k
+    return None
 
 
-# ────────────────────── Smart response ──────────────────────────
+def _find_auto(autos, name: str) -> Optional[Automatizacion]:
+    if not name:
+        return None
+    n = name.lower().strip()
+    for a in autos:
+        if a.nombre.lower() == n:
+            return a
+    for a in autos:
+        if n in a.nombre.lower():
+            return a
+    return None
+
+
+# ──────────────────────── Variaciones de respuesta ───────────────
+
+def _r(*options: str) -> str:
+    return random.choice(options)
+
+
+# ──────────────────────── Smart response ─────────────────────────
 
 async def _smart_response(
     mensaje: str,
@@ -196,162 +268,301 @@ async def _smart_response(
     db: AsyncSession,
     historial: list,
 ) -> dict[str, Any]:
-    """
-    Genera una respuesta inteligente y ejecuta acciones reales en BD.
-    Devuelve dict con: respuesta, accion (opcional), entidad (opcional).
-    """
-    msg = mensaje.lower().strip()
+
+    msg  = mensaje.strip()
+    msgL = msg.lower()
+    n_turns = len([m for m in historial if m["role"] == "user"])
+
     procesos, kpis, autos = await _load_all(db, empresa.id)
     scores = [p for p in procesos if p.score is not None]
-    prev_msg = _last_bot_msg(historial[:-1]) if len(historial) > 1 else ""
-    prev_names = _extract_bold_names(prev_msg)
+
+    last_bot   = _last_bot(historial[:-1]) if len(historial) > 1 else ""
+    prev_state, prev_entity = _detect_state(last_bot)
+    prev_names = _bold_names(last_bot)
+    context_proceso = _find_proceso(procesos, prev_entity) if prev_entity else None
 
     def R(texto: str, accion: str = None, entidad: dict = None):
         return {"respuesta": texto, "accion": accion, "entidad": entidad}
 
-    # ═══════════════════════════════════════════════════════════
-    # 1. ACCIONES DE CREACIÓN
-    # ═══════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════
+    # NIVEL 0 — Respuestas contextuales a preguntas previas del bot
+    # ═══════════════════════════════════════════════════════════════
 
-    is_create = bool(re.search(_CREATE_WORDS, msg))
+    is_yes = bool(_YES.search(msgL))
+    is_no  = bool(_NO.search(msgL)) and not is_yes  # "no sé" → no, pero "no sé, sí quiero" → ambiguo
 
-    # ── Crear PROCESO ──
-    if is_create and any(w in msg for w in ["proceso", "procesos", "flujo", "tarea", "actividad"]):
-        nombre = _extract_name(msg, "proceso") or _extract_name(msg) or "Nuevo proceso"
-        # Intentar inferir responsable y descripción del mensaje
-        responsable = None
-        m_resp = re.search(r"responsable[:\s]+(.{2,40}?)(?:\s+y|\s*$|,)", msg, re.I)
-        if m_resp:
-            responsable = m_resp.group(1).strip().capitalize()
+    if prev_state == ConvState.ASKED_SCORE and n_turns > 1:
+        if is_yes:
+            score_val = _extract_score(msgL)
+            if score_val is None and context_proceso:
+                return R(
+                    f"¡Perfecto! ¿Qué score le ponemos a **{context_proceso.nombre}**? (0 = muy ineficiente, 100 = óptimo)"
+                )
+            if score_val is not None and context_proceso:
+                context_proceso.score = score_val
+                await db.commit()
+                emoji = "🔴" if score_val < 40 else "🟡" if score_val < 70 else "🟢"
+                return R(
+                    f"{emoji} Score de **{context_proceso.nombre}** actualizado a **{score_val}/100**. ¡Guardado!",
+                    "updated_proceso",
+                    {"id": context_proceso.id, "score": score_val},
+                )
+            return R("Dime el número de score que quieres asignar (0-100).")
 
-        nuevo = Proceso(
-            empresa_id=empresa.id,
-            nombre=nombre.capitalize(),
-            estado="pendiente",
-            responsable=responsable,
-        )
-        db.add(nuevo)
-        await db.commit()
-        await db.refresh(nuevo)
+        if is_no or _is_reply_not_command(msg):
+            return R(_r(
+                "Entendido, sin score de momento. Puedes asignarlo más tarde desde la sección **Procesos** o diciéndome *«actualiza el score de [proceso] a [número]»*.",
+                "De acuerdo, lo dejamos sin score. Cuando lo tengas claro, dímelo.",
+                "Sin problema. Puedes editarlo manualmente en **Procesos** cuando quieras.",
+            ))
 
-        reply = _r(
-            f"✅ ¡Proceso **{nuevo.nombre}** creado! Lo encontrarás en la sección **Procesos**.\n\n"
-            f"Ahora puedes editarlo para añadir responsable, frecuencia y score. ¿Quieres que le asigne un score inicial?",
-
-            f"✅ He registrado el proceso **{nuevo.nombre}** en el sistema. Aparece en tu sección **Procesos** con estado *pendiente*.\n\n"
-            f"Para mejores análisis, añádele un score del 0 al 100 (0 = muy ineficiente, 100 = óptimo). ¿Lo hacemos?",
-        )
-        return R(reply, "created_proceso", {"id": nuevo.id, "nombre": nuevo.nombre})
-
-    # ── Crear KPI ──
-    if is_create and any(w in msg for w in ["kpi", "indicador", "métrica", "métrico", "objetivo"]):
-        nombre = _extract_name(msg, "kpi") or _extract_name(msg, "indicador") or _extract_name(msg) or "Nuevo KPI"
-        # Intentar extraer valor
-        valor = "0"
-        m_val = re.search(r"(?:valor|en|de|a)\s+([\d,.]+\s*%?)", msg, re.I)
-        if m_val:
-            valor = m_val.group(1).strip()
-
-        nuevo = KPI(
-            empresa_id=empresa.id,
-            nombre=nombre.capitalize(),
-            valor=valor,
-            tendencia="up",
-        )
-        db.add(nuevo)
-        await db.commit()
-        await db.refresh(nuevo)
-
-        reply = _r(
-            f"✅ KPI **{nuevo.nombre}** creado con valor inicial `{valor}`.\n\nPuedes editarlo en la sección **KPIs** para añadir unidad y objetivo. ¿Quieres añadir otro indicador?",
-            f"✅ He creado el indicador **{nuevo.nombre}**. Lo tienes disponible en **KPIs**. Si quieres cambiar el valor o añadir un objetivo, edítalo directamente.",
-        )
-        return R(reply, "created_kpi", {"id": nuevo.id, "nombre": nuevo.nombre})
-
-    # ── Crear AUTOMATIZACIÓN ──
-    if is_create and any(w in msg for w in ["automatiz", "automatización", "workflow", "flujo automático", "n8n", "robot", "bot", "script"]):
-        nombre = (
-            _extract_name(msg, "automatización") or
-            _extract_name(msg, "automatiz") or
-            _extract_name(msg, "para") or
-            _extract_name(msg) or
-            "Nueva automatización"
-        )
-        # Inferir herramienta
-        herramienta = None
-        for tool in ["n8n", "zapier", "make", "gmail", "sheets", "drive", "slack", "python"]:
-            if tool in msg:
-                herramienta = tool.capitalize()
-                break
-
-        nuevo = Automatizacion(
-            empresa_id=empresa.id,
-            nombre=nombre.capitalize(),
-            estado="pendiente",
-            herramienta=herramienta,
-            ejecuciones=0,
-        )
-        db.add(nuevo)
-        await db.commit()
-        await db.refresh(nuevo)
-
-        tool_msg = f" con **{herramienta}**" if herramienta else ""
-        reply = _r(
-            f"⚡ ¡Automatización **{nuevo.nombre}** registrada{tool_msg}!\n\nAparece en **Automatizaciones** con estado *pendiente*. "
-            f"Cuando la pongas en marcha, cámbiala a *activa* para que cuente en las estadísticas.",
-
-            f"⚡ He creado la automatización **{nuevo.nombre}**{tool_msg}. La encontrarás en la sección **Automatizaciones**.\n\n"
-            f"¿Quieres que te ayude a estimar cuántas horas al mes te va a ahorrar?",
-        )
-        return R(reply, "created_auto", {"id": nuevo.id, "nombre": nuevo.nombre})
-
-    # ═══════════════════════════════════════════════════════════
-    # 2. ACCIONES DE ELIMINACIÓN
-    # ═══════════════════════════════════════════════════════════
-
-    is_delete = bool(re.search(_DELETE_WORDS, msg))
-
-    if is_delete and any(w in msg for w in ["proceso", "procesos"]):
-        nombre_buscado = _extract_name(msg, "proceso") or _extract_name(msg) or ""
-        p = _find_proceso(procesos, nombre_buscado)
-        if p:
-            await db.delete(p)
-            await db.commit()
+    if prev_state == ConvState.ASKED_ANALYZE and n_turns > 1:
+        if is_yes and context_proceso:
+            p = context_proceso
+            score_line = f"• **Score:** {p.score}/100\n" if p.score is not None else "• **Score:** sin asignar\n"
+            emoji = "🔴" if (p.score or 0) < 40 else "🟡" if (p.score or 0) < 70 else "🟢"
             return R(
-                f"🗑️ El proceso **{p.nombre}** ha sido eliminado del sistema.",
-                "deleted_proceso",
+                f"{emoji} **Análisis de '{p.nombre}':**\n\n"
+                + score_line
+                + f"• **Estado:** {p.estado}\n"
+                + (f"• **Responsable:** {p.responsable}\n" if p.responsable else "")
+                + (f"• **Frecuencia:** {p.frecuencia}\n" if p.frecuencia else "")
+                + (f"• **Duración:** {p.duracion_h}h\n" if p.duracion_h else "")
+                + (f"• **Notas:** {p.descripcion}\n" if p.descripcion else "")
+                + "\n¿Quieres que proponga una automatización para este proceso?"
             )
-        return R(
-            f"No he encontrado ningún proceso llamado *{nombre_buscado}*. "
-            f"¿Quieres que te muestre la lista de procesos disponibles?",
-        )
+        if is_no:
+            return R("De acuerdo. ¿Qué quieres hacer entonces?")
 
-    if is_delete and any(w in msg for w in ["kpi", "indicador"]):
-        nombre_buscado = _extract_name(msg, "kpi") or _extract_name(msg, "indicador") or _extract_name(msg) or ""
-        k = _find_kpi(kpis, nombre_buscado)
-        if k:
-            await db.delete(k)
+    if prev_state == ConvState.ASKED_AUTO and n_turns > 1:
+        if is_yes and context_proceso:
+            nuevo = Automatizacion(
+                empresa_id=empresa.id,
+                nombre=f"Automatización de {context_proceso.nombre}",
+                estado="pendiente",
+                ejecuciones=0,
+            )
+            db.add(nuevo)
             await db.commit()
-            return R(f"🗑️ El KPI **{k.nombre}** ha sido eliminado.", "deleted_kpi")
-        return R(f"No encontré ningún KPI llamado *{nombre_buscado}*.")
+            await db.refresh(nuevo)
+            return R(
+                f"⚡ ¡Hecho! He creado la automatización **{nuevo.nombre}** en estado *pendiente*.\n\n"
+                f"Ve a **Automatizaciones** para configurarla con tu herramienta preferida (n8n, Zapier, etc.).",
+                "created_auto",
+                {"id": nuevo.id, "nombre": nuevo.nombre},
+            )
+        if is_no:
+            return R("Entendido. Si en algún momento quieres crearla, dímelo.")
 
-    if is_delete and any(w in msg for w in ["automatiz", "workflow"]):
-        nombre_buscado = _extract_name(msg, "automatiz") or _extract_name(msg) or ""
-        a = _find_auto(autos, nombre_buscado)
-        if a:
-            await db.delete(a)
+    if prev_state == ConvState.JUST_CREATED and n_turns > 1:
+        # El usuario responde a algo después de que el bot creó una entidad
+        if _is_reply_not_command(msg) and not _is_strong_create(msg):
+            # Es un comentario o corrección, no un nuevo comando de crear
+            entity_name = prev_names[0] if prev_names else "el elemento"
+            if is_no or any(w in msgL for w in ["no quería", "no era", "no es", "me equivoqué", "error", "equivocado"]):
+                return R(
+                    f"Entiendo, parece que fue un malentendido. ¿Quieres que elimine **{entity_name}**? "
+                    f"Di *«sí, elimínalo»* o dime qué querías crear exactamente."
+                )
+            # Score-related reply after create
+            if any(w in msgL for w in ["score", "no puedo", "no he", "todavía", "aún", "después", "más tarde", "no empezado"]):
+                return R(_r(
+                    f"Sin problema, el score lo puedes añadir cuando quieras. Ve a **Procesos** y edítalo, o dime *«actualiza el score de {entity_name} a [número]»* cuando lo tengas.",
+                    f"Tranquilo, puedes asignar el score más tarde desde **Procesos**. No hay prisa.",
+                    f"Entendido. El proceso está creado y puedes ponerle score cuando lo conozcas mejor.",
+                ))
+
+    # ═══════════════════════════════════════════════════════════════
+    # NIVEL 1 — Detectar si es respuesta conversacional (no comando)
+    # ═══════════════════════════════════════════════════════════════
+
+    if _is_reply_not_command(msg) and not _is_strong_create(msg) and n_turns > 1:
+        # Respuesta genérica de seguimiento
+        if any(w in msgL for w in ["no sé", "no se", "no lo sé", "ni idea", "no tengo claro"]):
+            return R(_r(
+                "Sin problema. Cuéntame más sobre tu empresa y yo te voy guiando. ¿A qué se dedica principalmente?",
+                "Tranquilo. ¿Qué tipo de tareas son las más repetitivas en tu empresa?",
+                "No pasa nada. Para empezar, ¿cuántas personas trabajan en la empresa y cuál es el proceso más lento?",
+            ))
+        if is_no and len(msgL) < 30:
+            return R(_r(
+                "De acuerdo. ¿Qué quieres hacer entonces?",
+                "Entendido. ¿En qué te puedo ayudar?",
+                "Ok. ¿Qué necesitas?",
+            ))
+        if is_yes and len(msgL) < 20:
+            # "sí" aislado sin contexto claro
+            return R("¡Perfecto! ¿De qué proceso o tarea quieres que me ocupe?")
+
+        # Comentario o pregunta no reconocida
+        return R(_r(
+            f"Entendido. ¿Quieres que analice algo concreto, o que cree algún proceso o automatización?",
+            f"De acuerdo. ¿En qué te puedo ayudar ahora?",
+        ))
+
+    # ═══════════════════════════════════════════════════════════════
+    # NIVEL 2 — Saludo
+    # ═══════════════════════════════════════════════════════════════
+
+    _SALUDOS = ["hola", "buenas", "hey", "hi", "hello", "ola", "qué tal", "buenas tardes", "buenos días", "buenas noches"]
+    if any(msgL == s or msgL.startswith(s + " ") or msgL.startswith(s + ",") for s in _SALUDOS):
+        if n_turns <= 1:
+            intro = _r(
+                f"¡Hola! Soy **BPA-Agent** 👋, tu asistente de procesos para **{empresa.nombre}**.",
+                f"¡Buenas! Soy el agente de **{empresa.nombre}**. Encantado.",
+                f"¡Hola! Conectado a **{empresa.nombre}**. ¿En qué te ayudo?",
+            )
+            if not procesos:
+                return R(
+                    intro + "\n\n"
+                    "Veo que aún no tienes procesos. Puedo crearlos directamente desde aquí: "
+                    "di *«crea un proceso de [nombre]»* y lo registro al instante.\n\n"
+                    "También puedo crear KPIs, automatizaciones y analizar tu empresa."
+                )
+            criticos = [p for p in scores if p.score < 50]
+            resumen = f"Tienes **{len(procesos)} proceso(s)**, **{len(autos)} automatización(es)** y **{len(kpis)} KPI(s)**"
+            if criticos:
+                resumen += f". ⚠️ **{len(criticos)} proceso(s) crítico(s)** necesitan atención"
+            return R(intro + "\n\n" + resumen + ".\n\n¿Qué quieres hacer hoy?")
+        return R(_r("¡Hola de nuevo! ¿En qué te ayudo?", "¿Qué tal? ¿Qué necesitas?", "¡Buenas! Dime."))
+
+    # ═══════════════════════════════════════════════════════════════
+    # NIVEL 3 — Meta: el bot se queja / el usuario critica
+    # ═══════════════════════════════════════════════════════════════
+
+    if any(w in msgL for w in ["siempre lo mismo", "misma respuesta", "siempre eso", "repetitivo",
+                                "no me entiendes", "no entiendes", "mal", "inútil", "inutil",
+                                "no sirves", "para qué sirves", "para que sirves", "no funciona",
+                                "no me ayudas", "error", "equivocado", "te has equivocado",
+                                "no era eso", "no quería eso"]):
+        return R(_r(
+            "Tienes razón, me he equivocado. ¿Qué querías hacer exactamente? Dímelo con más detalle y lo hago bien.",
+            "Lo siento. ¿Puedes decirme exactamente qué necesitas? Intenta ser concreto: *«crea X»*, *«analiza Y»*, etc.",
+            "Pido disculpas. ¿Qué esperabas que hiciera? Te lo corrijo ahora mismo.",
+        ))
+
+    # ═══════════════════════════════════════════════════════════════
+    # NIVEL 4 — Acciones de CREACIÓN (solo con verbo explícito)
+    # ═══════════════════════════════════════════════════════════════
+
+    if _is_strong_create(msg):
+
+        # Crear PROCESO
+        if any(w in msgL for w in ["proceso", "flujo", "tarea", "actividad", "procedimiento"]):
+            nombre = _extract_name_from(msg, ["proceso", "flujo", "tarea", "actividad", "procedimiento"])
+            if not nombre or len(nombre.strip()) < 3:
+                return R("¿Cómo se llama el proceso que quieres crear? Dime el nombre.")
+            nombre = nombre[:100]
+            nuevo = Proceso(empresa_id=empresa.id, nombre=nombre, estado="pendiente")
+            db.add(nuevo)
             await db.commit()
-            return R(f"🗑️ La automatización **{a.nombre}** ha sido eliminada.", "deleted_auto")
-        return R(f"No encontré ninguna automatización llamada *{nombre_buscado}*.")
+            await db.refresh(nuevo)
+            return R(
+                _r(
+                    f"✅ ¡Proceso **{nuevo.nombre}** creado y guardado!\n\nAparece en **Procesos** con estado *pendiente*.\n\n"
+                    f"Para que pueda analizarlo mejor, ¿le asignamos un score ahora? (0 = muy ineficiente, 100 = óptimo)",
+                    f"✅ He registrado **{nuevo.nombre}** en el sistema. Lo tienes en la sección **Procesos**.\n\n"
+                    f"¿Le ponemos un score inicial para poder priorizar análisis?",
+                ),
+                "created_proceso",
+                {"id": nuevo.id, "nombre": nuevo.nombre},
+            )
 
-    # ═══════════════════════════════════════════════════════════
-    # 3. ACTUALIZACIÓN DE SCORE
-    # ═══════════════════════════════════════════════════════════
+        # Crear KPI
+        if any(w in msgL for w in ["kpi", "indicador", "métrica", "metrica", "objetivo", "medida"]):
+            nombre = _extract_name_from(msg, ["kpi", "indicador", "métrica", "metrica", "objetivo"])
+            if not nombre or len(nombre.strip()) < 3:
+                return R("¿Cómo se llama el KPI que quieres crear? Por ejemplo: *«crea un KPI de satisfacción del cliente»*.")
+            valor = "0"
+            m_val = re.search(r"(?:valor|de|a|en)\s+([\d,.]+\s*%?)", msgL)
+            if m_val:
+                valor = m_val.group(1).strip()
+            nuevo = KPI(empresa_id=empresa.id, nombre=nombre[:100], valor=valor, tendencia="up")
+            db.add(nuevo)
+            await db.commit()
+            await db.refresh(nuevo)
+            return R(
+                f"✅ KPI **{nuevo.nombre}** creado con valor inicial `{valor}`.\n\n"
+                f"Puedes editarlo en **KPIs** para añadir unidad, objetivo y ajustar la tendencia.",
+                "created_kpi",
+                {"id": nuevo.id, "nombre": nuevo.nombre},
+            )
 
-    if any(w in msg for w in ["actualiza", "cambia", "pon", "asigna", "establece"]) and "score" in msg:
-        score_val = _extract_score(msg)
-        nombre_buscado = _extract_name(msg, "proceso") or (prev_names[0] if prev_names else None) or ""
-        p = _find_proceso(procesos, nombre_buscado) if nombre_buscado else None
+        # Crear AUTOMATIZACIÓN
+        if any(w in msgL for w in ["automatiz", "workflow", "flujo automático", "bot", "script", "n8n", "zapier", "make"]):
+            nombre = _extract_name_from(msg, ["automatización", "automatizacion", "automatiz", "workflow", "bot", "para"])
+            if not nombre or len(nombre.strip()) < 3:
+                return R("¿Cómo se llama la automatización? Por ejemplo: *«crea una automatización de envío de emails»*.")
+            herramienta = None
+            for tool in ["n8n", "zapier", "make", "gmail", "sheets", "drive", "slack", "python", "power automate"]:
+                if tool in msgL:
+                    herramienta = tool.capitalize()
+                    break
+            nuevo = Automatizacion(
+                empresa_id=empresa.id,
+                nombre=nombre[:100],
+                estado="pendiente",
+                herramienta=herramienta,
+                ejecuciones=0,
+            )
+            db.add(nuevo)
+            await db.commit()
+            await db.refresh(nuevo)
+            tool_str = f" con **{herramienta}**" if herramienta else ""
+            return R(
+                _r(
+                    f"⚡ Automatización **{nuevo.nombre}** creada{tool_str}.\n\n"
+                    f"Aparece en **Automatizaciones** con estado *pendiente*. Actívala cuando la tengas configurada para que cuente en las estadísticas.",
+                    f"⚡ Registrada la automatización **{nuevo.nombre}**{tool_str}. La tienes en **Automatizaciones**.\n\n"
+                    f"¿Quieres que te ayude a estimar cuántas horas al mes podría ahorrarte?",
+                ),
+                "created_auto",
+                {"id": nuevo.id, "nombre": nuevo.nombre},
+            )
+
+    # ═══════════════════════════════════════════════════════════════
+    # NIVEL 5 — Acciones de ELIMINACIÓN
+    # ═══════════════════════════════════════════════════════════════
+
+    _DELETE_RE = re.compile(r"\b(elimina(?:r)?|borra(?:r)?|quita(?:r)?|suprime?(?:r)?|borrar?|delete)\b", re.I)
+    if _DELETE_RE.search(msgL):
+        if any(w in msgL for w in ["proceso"]):
+            nombre = _extract_name_from(msg, ["proceso"])
+            p = _find_proceso(procesos, nombre) if nombre else (context_proceso if context_proceso else None)
+            if p:
+                await db.delete(p)
+                await db.commit()
+                return R(f"🗑️ El proceso **{p.nombre}** ha sido eliminado.", "deleted_proceso")
+            if not procesos:
+                return R("No tienes procesos registrados.")
+            return R(f"No encontré ese proceso. Tus procesos son: " + ", ".join(f"*{p.nombre}*" for p in procesos[:5]))
+        if any(w in msgL for w in ["kpi", "indicador"]):
+            nombre = _extract_name_from(msg, ["kpi", "indicador"])
+            k = _find_kpi(kpis, nombre) if nombre else None
+            if k:
+                await db.delete(k)
+                await db.commit()
+                return R(f"🗑️ KPI **{k.nombre}** eliminado.", "deleted_kpi")
+            return R("¿Qué KPI quieres eliminar? Dime el nombre exacto.")
+        if any(w in msgL for w in ["automatiz"]):
+            nombre = _extract_name_from(msg, ["automatización", "automatiz"])
+            a = _find_auto(autos, nombre) if nombre else None
+            if a:
+                await db.delete(a)
+                await db.commit()
+                return R(f"🗑️ Automatización **{a.nombre}** eliminada.", "deleted_auto")
+            return R("¿Qué automatización quieres eliminar? Dime el nombre.")
+
+    # ═══════════════════════════════════════════════════════════════
+    # NIVEL 6 — Actualización de SCORE
+    # ═══════════════════════════════════════════════════════════════
+
+    if re.search(r"\b(actualiz|cambia|pon(?:le)?|asigna|establece|sube|baja)\b.*\bscore\b|\bscore\b.*\b(actualiz|cambia|pon(?:le)?|asigna)\b", msgL):
+        score_val = _extract_score(msgL)
+        nombre = _extract_name_from(msg, ["proceso", "de", "score"]) or (prev_entity if prev_entity else None)
+        p = _find_proceso(procesos, nombre) if nombre else None
+        if not p and context_proceso:
+            p = context_proceso
         if p and score_val is not None:
             p.score = score_val
             await db.commit()
@@ -359,358 +570,265 @@ async def _smart_response(
             return R(
                 f"{emoji} Score de **{p.nombre}** actualizado a **{score_val}/100**.",
                 "updated_proceso",
-                {"id": p.id, "nombre": p.nombre, "score": score_val},
+                {"id": p.id, "score": score_val},
             )
         if not p:
-            return R("¿De qué proceso quieres actualizar el score? Dime el nombre exacto.")
+            if not procesos:
+                return R("No tienes procesos. Primero crea uno.")
+            return R("¿De qué proceso quieres cambiar el score? Dime el nombre exacto.")
         if score_val is None:
-            return R("¿A qué valor quieres cambiar el score? Dime un número del 0 al 100.")
+            return R(f"¿A qué valor quieres cambiar el score de **{p.nombre}**? (0-100)")
 
-    # ═══════════════════════════════════════════════════════════
-    # 4. PREGUNTAS / CONSULTAS
-    # ═══════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════
+    # NIVEL 7 — CONSULTAS (mostrar / analizar / listar)
+    # ═══════════════════════════════════════════════════════════════
 
-    # ── SALUDO ──
-    saludos = ["hola", "buenas", "hey", "qué tal", "buenos", "hi", "hello", "ola", "buenass"]
-    if any(msg == s or msg.startswith(s + " ") or msg.startswith(s + ",") or msg == s + "!" for s in saludos):
-        n_turns = len([m for m in historial if m["role"] == "user"])
-        if n_turns <= 1:
-            intro = _r(
-                f"¡Hola! Soy **BPA-Agent** 👋, tu asistente de procesos para **{empresa.nombre}**.",
-                f"¡Buenas! Soy el agente BPA de **{empresa.nombre}**. Estoy aquí para ayudarte.",
-                f"¡Hola! Encantado. Soy **BPA-Agent**, conectado a **{empresa.nombre}**.",
-            )
-            if not procesos:
-                return R(
-                    intro + "\n\n"
-                    "Veo que todavía no tienes procesos registrados. Puedo creártelos directamente desde aquí. "
-                    "Por ejemplo, di: *\"crea un proceso de facturación mensual\"* y lo añado al sistema al momento."
-                )
-            criticos = [p for p in scores if p.score < 50]
-            resumen = f"Tienes **{len(procesos)} proceso(s)**, **{len(autos)} automatización(es)** y **{len(kpis)} KPI(s)**"
-            if criticos:
-                resumen += f". **⚠️ {len(criticos)} proceso(s) crítico(s)** necesitan atención"
-            return R(intro + "\n\n" + resumen + ".\n\n¿Qué quieres hacer hoy?")
-        else:
-            return R(_r(
-                "¡Hola de nuevo! ¿En qué puedo ayudarte ahora?",
-                "¿Qué tal? Aquí estoy. ¿Qué necesitas?",
-                "¡Buenas! ¿Qué quieres analizar o crear?",
-            ))
-
-    # ── META: el usuario se queja del bot ──
-    if any(w in msg for w in ["siempre lo mismo", "siempre dices", "misma respuesta", "siempre eso",
-                               "repetit", "no me ayudas", "inutil", "inútil", "que haces",
-                               "para qué sirves", "para que sirves", "no funciona"]):
-        return R(_r(
-            "Tienes razón, lo siento. Puedo hacer bastante más que solo responder: "
-            "puedo **crear** procesos, KPIs y automatizaciones directamente desde aquí, "
-            "**analizar** el estado de tu empresa y **eliminar** registros. "
-            "¿Qué quieres que haga exactamente?",
-
-            "Me pillas. Déjame ser más útil. Dime qué necesitas: "
-            "¿crear algo nuevo, analizar un proceso concreto, ver estadísticas? "
-            "Cuéntame y lo hago.",
-        ))
-
-    # ── MOSTRAR / LISTAR ──
-    if any(w in msg for w in ["muestra", "lista", "ver", "dame", "tengo", "cuántos", "cuantos", "qué tengo"]):
-        if any(w in msg for w in ["proceso", "procesos"]):
-            if not procesos:
-                return R("No tienes procesos registrados. Di *\"crea un proceso de [nombre]\"* y lo añado ahora mismo.")
-            lines = []
-            for p in sorted(procesos, key=lambda x: x.score or 999):
-                emoji = "🔴" if (p.score or 0) < 40 else "🟡" if (p.score or 0) < 70 else "🟢"
-                score_str = f" — {p.score}/100" if p.score is not None else " — sin score"
-                lines.append(f"{emoji} **{p.nombre}**{score_str}")
-            return R(f"📋 Tus **{len(procesos)} proceso(s)**:\n\n" + "\n".join(lines) + "\n\n¿Quieres analizar alguno?")
-
-        if any(w in msg for w in ["automatiz", "automatización"]):
-            if not autos:
-                return R("No tienes automatizaciones. Di *\"crea una automatización para [nombre]\"* y la registro.")
-            activas = [a for a in autos if a.estado == "activa"]
-            horas = sum(a.horas_mes or 0 for a in autos)
-            lines = [f"• **{a.nombre}** — {a.estado}" + (f" ({a.herramienta})" if a.herramienta else "") for a in autos]
-            return R(
-                f"⚡ Tienes **{len(autos)} automatización(es)** ({len(activas)} activas, {horas}h/mes ahorradas):\n\n"
-                + "\n".join(lines)
-            )
-
-        if any(w in msg for w in ["kpi", "kpis", "indicador", "indicadores", "métrica", "métricas"]):
-            if not kpis:
-                return R("No tienes KPIs definidos. Di *\"crea un KPI de [nombre]\"* para añadir uno.")
-            lines = []
-            for k in kpis:
-                tend = "↑" if k.tendencia == "up" else "↓" if k.tendencia == "down" else "→"
-                lines.append(f"{tend} **{k.nombre}**: {k.valor}{' ' + k.unidad if k.unidad else ''}")
-            return R(f"📈 Tus **{len(kpis)} KPI(s)**:\n\n" + "\n".join(lines))
-
-    # ── ANÁLISIS de proceso concreto ──
-    analizar_keywords = ["analiza", "análisis", "analisis", "analizar", "cómo está", "como esta",
-                         "cuéntame más de", "cuentame mas de", "detalles de", "info de",
-                         "información de", "informacion de", "explicame", "háblame de"]
-    if any(w in msg for w in analizar_keywords):
-        nombre_buscado = None
-        for kw in analizar_keywords:
-            if kw in msg:
-                nombre_buscado = _extract_name(msg, kw)
-                if nombre_buscado:
+    # Analizar proceso concreto
+    _ANALYZE_KW = ["analiza", "análisis", "analisis", "cómo está", "como esta", "cuéntame",
+                   "cuentame", "detalles", "info", "información", "informacion",
+                   "háblame", "hablame", "explícame", "explicame", "revisar", "revisar"]
+    if any(w in msgL for w in _ANALYZE_KW):
+        nombre = None
+        for kw in _ANALYZE_KW:
+            if kw in msgL:
+                nombre = _extract_name_from(msg, [kw])
+                if nombre:
                     break
-        if not nombre_buscado and prev_names:
-            nombre_buscado = prev_names[0]
-
-        p = _find_proceso(procesos, nombre_buscado) if nombre_buscado else None
+        if not nombre and prev_names:
+            nombre = prev_names[0]
+        p = _find_proceso(procesos, nombre) if nombre else None
         if p:
             score_line = f"• **Score:** {p.score}/100\n" if p.score is not None else "• **Score:** sin asignar\n"
             emoji = "🔴" if (p.score or 0) < 40 else "🟡" if (p.score or 0) < 70 else "🟢"
             recom = ""
-            if p.score is not None and p.score < 50:
-                recom = "\n\n⚠️ **Este proceso necesita atención urgente.** ¿Quieres que cree una automatización para optimizarlo?"
-            elif p.score is not None and p.score < 70:
-                recom = "\n\n💡 Hay margen de mejora. ¿Quiero que proponga una automatización?"
+            if p.score is not None and p.score < 60:
+                recom = "\n\n¿Quieres que proponga una automatización para optimizarlo?"
             return R(
                 f"{emoji} **Análisis de '{p.nombre}':**\n\n"
                 + score_line
                 + f"• **Estado:** {p.estado}\n"
                 + (f"• **Responsable:** {p.responsable}\n" if p.responsable else "")
                 + (f"• **Frecuencia:** {p.frecuencia}\n" if p.frecuencia else "")
-                + (f"• **Duración estimada:** {p.duracion_h}h\n" if p.duracion_h else "")
+                + (f"• **Duración:** {p.duracion_h}h\n" if p.duracion_h else "")
                 + (f"• **Notas:** {p.descripcion}\n" if p.descripcion else "")
                 + recom
             )
-
-        if not procesos:
-            return R("No tienes procesos registrados todavía. Puedo crear uno: dime *\"crea un proceso de [nombre]\"*.")
-        # Mostrar todos si no encontró uno concreto
-        if scores:
-            peor = min(scores, key=lambda x: x.score)
+        if procesos:
             return R(
-                f"Dime el nombre exacto del proceso que quieres analizar. "
-                f"Tienes **{len(procesos)}** registrados. El más crítico ahora mismo es **{peor.nombre}** (score {peor.score}/100)."
+                f"¿Qué proceso quieres analizar? Tus procesos: "
+                + ", ".join(f"*{p.nombre}*" for p in procesos[:6])
             )
-        return R(f"¿De qué proceso quieres el análisis? Tienes {len(procesos)} registrado(s): " + ", ".join(f"*{p.nombre}*" for p in procesos[:4]))
+        return R("No tienes procesos aún. Di *«crea un proceso de [nombre]»* para empezar.")
 
-    # ── RESUMEN / DIAGNÓSTICO general ──
-    if any(w in msg for w in ["resumen", "resumen empresa", "resumen completo", "overview", "diagnós",
-                               "diagnostico", "situación", "situacion", "cómo estamos", "como estamos",
-                               "cómo va", "como va", "estado", "qué tal vamos"]):
+    # Listar / mostrar
+    if any(w in msgL for w in ["muestra", "lista", "ver", "tengo", "cuántos", "cuantos", "qué tengo", "que tengo", "dame"]):
+        if any(w in msgL for w in ["proceso", "procesos"]):
+            if not procesos:
+                return R("No tienes procesos. Di *«crea un proceso de [nombre]»* para añadir el primero.")
+            lines = []
+            for p in sorted(procesos, key=lambda x: (x.score is None, x.score or 999)):
+                e = "🔴" if (p.score or 0) < 40 else "🟡" if (p.score or 0) < 70 else "🟢"
+                s = f" — {p.score}/100" if p.score is not None else " — sin score"
+                lines.append(f"{e} **{p.nombre}**{s}")
+            return R(f"📋 Tus **{len(procesos)} proceso(s)**:\n\n" + "\n".join(lines) + "\n\n¿Quieres analizar alguno?")
+
+        if any(w in msgL for w in ["automatiz"]):
+            if not autos:
+                return R("No tienes automatizaciones. Di *«crea una automatización de [nombre]»*.")
+            activas = [a for a in autos if a.estado == "activa"]
+            horas = sum(a.horas_mes or 0 for a in autos)
+            lines = [f"• **{a.nombre}** — {a.estado}" + (f" ({a.herramienta})" if a.herramienta else "") for a in autos]
+            return R(f"⚡ **{len(autos)} automatización(es)** ({len(activas)} activas, {horas}h/mes):\n\n" + "\n".join(lines))
+
+        if any(w in msgL for w in ["kpi", "indicador", "indicadores"]):
+            if not kpis:
+                return R("No tienes KPIs. Di *«crea un KPI de [nombre]»*.")
+            lines = []
+            for k in kpis[:8]:
+                t = "↑" if k.tendencia == "up" else "↓" if k.tendencia == "down" else "→"
+                lines.append(f"{t} **{k.nombre}**: {k.valor}{' ' + k.unidad if k.unidad else ''}")
+            return R(f"📈 **{len(kpis)} KPI(s)**:\n\n" + "\n".join(lines))
+
+    # Resumen / diagnóstico
+    if any(w in msgL for w in ["resumen", "overview", "diagnós", "diagnostico", "situación",
+                                "situacion", "cómo estamos", "como estamos", "cómo va", "como va",
+                                "estado", "qué tal vamos", "que tal vamos"]):
         activas = [a for a in autos if a.estado == "activa"]
         horas = sum(a.horas_mes or 0 for a in autos)
         criticos = [p for p in scores if p.score < 50]
         score_prom = round(sum(p.score for p in scores) / len(scores), 1) if scores else None
 
-        resumen = f"📊 **Estado de {empresa.nombre}:**\n\n"
-        resumen += f"• **Procesos:** {len(procesos)}"
-        if score_prom:
-            resumen += f" | Score promedio: **{score_prom}/100**"
+        res = f"📊 **{empresa.nombre} — Estado actual:**\n\n"
+        res += f"• **Procesos:** {len(procesos)}"
+        if score_prom is not None:
+            res += f" | Score promedio: **{score_prom}/100**"
         if criticos:
-            resumen += f" | ⚠️ {len(criticos)} crítico(s)"
-        resumen += f"\n• **Automatizaciones:** {len(autos)} ({len(activas)} activas) | Ahorro: **{horas}h/mes**"
-        resumen += f"\n• **KPIs:** {len(kpis)}\n"
+            res += f" | ⚠️ {len(criticos)} crítico(s)"
+        res += f"\n• **Automatizaciones:** {len(autos)} ({len(activas)} activas) | Ahorro: **{horas}h/mes**"
+        res += f"\n• **KPIs:** {len(kpis)}\n"
 
         if not procesos:
-            resumen += "\n▶️ **Primer paso:** Di *\"crea un proceso de [nombre]\"* para empezar a mapear tu empresa."
+            res += "\n▶️ **Paso 1:** Di *«crea un proceso de [nombre]»* para mapear tu empresa."
         elif criticos:
-            resumen += f"\n⚠️ **Urgente:** **{criticos[0].nombre}** tiene score crítico ({criticos[0].score}/100)."
+            res += f"\n⚠️ **Urgente:** **{criticos[0].nombre}** tiene score {criticos[0].score}/100. ¿Lo analizo?"
         elif not kpis:
-            resumen += "\n💡 **Siguiente paso:** Define KPIs para medir la mejora. Di *\"crea un KPI de [nombre]\"*."
+            res += "\n💡 **Siguiente:** Define KPIs para medir la mejora. Di *«crea un KPI de [nombre]»*."
         elif not autos:
-            resumen += "\n💡 **Oportunidad:** Puedes crear automatizaciones para ahorrar tiempo. Di *\"crea una automatización\"*."
+            res += "\n💡 **Oportunidad:** Crea automatizaciones para ahorrar tiempo."
         else:
-            resumen += f"\n✅ Todo en marcha. Estás ahorrando {horas}h/mes."
-        return R(resumen)
+            res += f"\n✅ Todo en marcha. Ahorrando **{horas}h/mes** con automatizaciones."
+        return R(res)
 
-    # ── PROCESOS (pregunta genérica) ──
-    if any(w in msg for w in ["proceso", "procesos", "mapear"]):
-        if not procesos:
-            return R(
-                "Aún no tienes procesos registrados.\n\nPuedo crearlos directamente: "
-                "di *\"crea un proceso de facturación\"*, *\"crea un proceso de atención al cliente\"*, etc."
-            )
-        if scores:
-            peor = min(scores, key=lambda x: x.score)
-            mejor = max(scores, key=lambda x: x.score)
-            criticos = [p for p in scores if p.score < 50]
-            lines = []
-            for p in sorted(scores, key=lambda x: x.score)[:5]:
-                emoji = "🔴" if p.score < 40 else "🟡" if p.score < 70 else "🟢"
-                lines.append(f"{emoji} **{p.nombre}** — {p.score}/100")
-            reply = f"📋 **Tus {len(procesos)} proceso(s):**\n\n" + "\n".join(lines)
-            if criticos:
-                reply += f"\n\n⚠️ {len(criticos)} proceso(s) crítico(s). ¿Analizo **{criticos[0].nombre}** en detalle?"
-            else:
-                reply += f"\n\n✅ Ninguno en estado crítico. El más mejorable es **{peor.nombre}** ({peor.score}/100)."
-            return R(reply)
-        lines = [f"• **{p.nombre}** ({p.estado})" for p in procesos[:5]]
-        return R(
-            f"Tienes **{len(procesos)} proceso(s)** registrado(s):\n\n" + "\n".join(lines) +
-            "\n\nNinguno tiene score asignado. Edítalos en **Procesos** o dime *\"actualiza el score de [proceso] a [número]\"*."
-        )
-
-    # ── AUTOMATIZACIONES (pregunta genérica) ──
-    if any(w in msg for w in ["automatiz", "automatización", "workflow", "n8n", "zapier"]):
-        if not autos:
-            sugerencias = []
-            for p in procesos[:3]:
-                nl = p.nombre.lower()
-                if "factur" in nl:
-                    sugerencias.append(f"• *Automatización de facturación* con n8n + Google Sheets")
-                elif "email" in nl or "correo" in nl:
-                    sugerencias.append(f"• *Envío automático de emails* con Gmail API")
-                elif "client" in nl or "onboard" in nl:
-                    sugerencias.append(f"• *Alta de clientes* con n8n + Drive + Gmail")
-                elif "inventar" in nl:
-                    sugerencias.append(f"• *Control de inventario* con hoja de cálculo automatizada")
-                else:
-                    sugerencias.append(f"• *Notificaciones automáticas* para {p.nombre}")
-            reply = "Todavía no tienes automatizaciones configuradas.\n\n"
-            if sugerencias:
-                reply += "Basándome en tus procesos, te propongo:\n\n" + "\n".join(sugerencias[:3])
-                reply += "\n\n¿Quieres que cree alguna? Di *\"crea una automatización de [nombre]\"*."
-            else:
-                reply += "Di *\"crea una automatización de [nombre]\"* y la registro en el sistema al momento."
-            return R(reply)
-        activas = [a for a in autos if a.estado == "activa"]
-        horas = sum(a.horas_mes or 0 for a in autos)
-        return R(
-            f"⚡ Tienes **{len(autos)} automatización(es)** ({len(activas)} activas).\n"
-            f"Ahorro estimado: **{horas}h/mes**.\n\n"
-            + ("".join(f"• **{a.nombre}** — {a.estado}\n" for a in autos[:5]))
-            + "\n¿Quieres crear una nueva o activar alguna pendiente?"
-        )
-
-    # ── KPIs (pregunta genérica) ──
-    if any(w in msg for w in ["kpi", "indicador", "métrica", "rendimiento", "performance", "objetivo"]):
-        if not kpis:
-            return R(
-                "Aún no tienes KPIs definidos.\n\n"
-                "Los más útiles para BPA son:\n"
-                "• *Tiempo de resolución de procesos*\n• *Coste por proceso (€)*\n"
-                "• *Satisfacción del cliente (%)*\n• *Errores por ciclo*\n\n"
-                "Di *\"crea un KPI de [nombre]\"* y lo añado ahora."
-            )
-        lines = []
-        for k in kpis[:6]:
-            tend = "↑" if k.tendencia == "up" else "↓" if k.tendencia == "down" else "→"
-            obj = f" (obj: {k.objetivo})" if k.objetivo else ""
-            lines.append(f"{tend} **{k.nombre}**: {k.valor}{' ' + k.unidad if k.unidad else ''}{obj}")
-        return R(f"📈 **Tus {len(kpis)} KPI(s):**\n\n" + "\n".join(lines))
-
-    # ── PROPUESTAS / RECOMENDACIONES ──
-    if any(w in msg for w in ["propuesta", "suger", "recomend", "mejora", "optimiz", "qué me recomiendas", "que me recomiendas"]):
+    # Propuestas
+    if any(w in msgL for w in ["propuesta", "suger", "recomend", "mejora", "optimiz", "qué hago", "que hago", "por dónde", "por donde"]):
         props = []
         if not procesos:
-            props.append("▶️ **Mapea tus procesos:** di *\"crea un proceso de [nombre]\"* para cada proceso clave.")
+            props.append("▶️ **Mapear procesos:** di *«crea un proceso de [nombre]»* para cada proceso clave.")
         else:
             criticos = sorted([p for p in scores if p.score < 60], key=lambda x: x.score)
             for p in criticos[:2]:
                 props.append(
                     f"🔴 **Optimizar '{p.nombre}'** (score {p.score}/100)\n"
-                    f"   → ¿Quieres que cree una automatización para este proceso?"
+                    f"   → Revisar cuellos de botella y considerar automatización"
                 )
         if not autos and procesos:
-            props.append(
-                f"⚡ **Crear tu primera automatización** — Di *\"crea una automatización para {procesos[0].nombre}\"*\n"
-                f"   → Ahorro estimado: 4-8h/mes"
-            )
+            props.append(f"⚡ **Primera automatización** para *{procesos[0].nombre}*\n   → Ahorro estimado: 4-8h/mes")
         if not kpis:
-            props.append("📊 **Definir KPIs** — Di *\"crea un KPI de [nombre]\"* para medir el progreso.")
+            props.append("📊 **Definir KPIs** → di *«crea un KPI de [nombre]»*.")
         if not props:
             horas = sum(a.horas_mes or 0 for a in autos)
-            props = [
-                f"✅ Tu empresa está bien encaminada con {len(procesos)} procesos y {horas}h/mes ahorradas.\n"
-                "→ Siguiente nivel: incrementa el score de los procesos con más margen de mejora."
-            ]
+            props = [f"✅ Empresa bien encaminada ({horas}h/mes ahorradas). Para seguir mejorando: sube el score de los procesos con más margen."]
         return R("💡 **Mis recomendaciones:**\n\n" + "\n\n".join(props))
 
-    # ── AYUDA ──
-    if any(w in msg for w in ["ayuda", "help", "qué puedes", "que puedes", "cómo funciona", "que haces",
-                               "qué haces", "comandos", "instrucciones", "para qué sirves", "para que sirves"]):
+    # Ayuda
+    if any(w in msgL for w in ["ayuda", "help", "qué puedes", "que puedes", "cómo funciona",
+                                "que haces", "qué haces", "comandos"]):
         return R(
-            "Puedo hacer bastante más que responder preguntas 😄\n\n"
-            "**Crear cosas:**\n"
-            "• *\"Crea un proceso de facturación mensual\"*\n"
-            "• *\"Crea una automatización para enviar emails con n8n\"*\n"
-            "• *\"Crea un KPI de satisfacción del cliente\"*\n\n"
-            "**Analizar y consultar:**\n"
-            "• *\"Analiza el proceso de control de inventario\"*\n"
-            "• *\"Muéstrame mis KPIs\"* / *\"Lista mis automatizaciones\"*\n"
-            "• *\"Dame un resumen de la empresa\"*\n\n"
-            "**Actualizar y eliminar:**\n"
-            "• *\"Actualiza el score de facturación a 75\"*\n"
-            "• *\"Elimina el proceso X\"*\n\n"
-            "Todo se guarda en tiempo real en la base de datos."
+            "Puedo **crear**, **analizar**, **actualizar** y **eliminar** datos de tu empresa directamente desde el chat:\n\n"
+            "**Crear:**\n"
+            "• *«Crea un proceso de facturación mensual»*\n"
+            "• *«Crea una automatización de envío de emails con n8n»*\n"
+            "• *«Crea un KPI de satisfacción del cliente»*\n\n"
+            "**Consultar:**\n"
+            "• *«Muéstrame mis procesos»* / *«Muéstrame mis KPIs»*\n"
+            "• *«Analiza el proceso de [nombre]»*\n"
+            "• *«Dame un resumen de la empresa»*\n\n"
+            "**Modificar:**\n"
+            "• *«Actualiza el score de [proceso] a 75»*\n"
+            "• *«Elimina el proceso [nombre]»*\n\n"
+            "Todo se guarda en la base de datos en tiempo real. ¿Qué quieres hacer?"
         )
 
-    # ── SEGUIMIENTO CONTEXTUAL (peor/mejor proceso) ──
-    if any(w in msg for w in ["peor", "más bajo", "mas bajo", "menor score", "crítico", "critico"]):
+    # Peor/mejor proceso
+    if any(w in msgL for w in ["peor", "más bajo", "mas bajo", "menor", "crítico", "critico", "urgente"]):
         if scores:
             peor = min(scores, key=lambda p: p.score)
             return R(
-                f"🔴 El proceso con **peor score** es **{peor.nombre}** con **{peor.score}/100**.\n\n"
-                f"Estado: {peor.estado or 'pendiente'}."
-                + (f" Responsable: {peor.responsable}." if peor.responsable else "")
-                + f"\n\n¿Quiero que analice cómo mejorarlo o cree una automatización para ese proceso?"
+                f"🔴 Proceso con **peor score**: **{peor.nombre}** ({peor.score}/100).\n\n"
+                + (f"Responsable: {peor.responsable}. " if peor.responsable else "")
+                + "¿Quieres que lo analice en detalle?"
             )
-        return R("Ninguno de tus procesos tiene score asignado. Edítalos en **Procesos** para asignar uno.")
+        return R("Ningún proceso tiene score asignado todavía. Edítalos en **Procesos** para añadir uno.")
 
-    if any(w in msg for w in ["mejor", "más alto", "mas alto", "mayor score", "el mejor"]):
+    if any(w in msgL for w in ["mejor", "más alto", "mas alto", "mayor", "óptimo", "optimo"]):
         if scores:
             mejor = max(scores, key=lambda p: p.score)
-            return R(
-                f"🟢 El proceso con **mejor score** es **{mejor.nombre}** con **{mejor.score}/100**.\n\n"
-                + (f"Responsable: {mejor.responsable}." if mejor.responsable else "")
-            )
-        return R("Ninguno de tus procesos tiene score asignado todavía.")
+            return R(f"🟢 Proceso con **mejor score**: **{mejor.nombre}** ({mejor.score}/100).")
+        return R("Sin scores asignados aún.")
 
-    # ── RESPUESTA GRACIAS / POSITIVA ──
-    if any(w in msg for w in ["gracias", "perfecto", "genial", "bien", "ok", "vale", "entendido", "de acuerdo"]):
+    # Gracias / positivo
+    if any(w in msgL for w in ["gracias", "perfecto", "genial", "bien", "ok", "vale", "entendido", "de acuerdo", "👍"]):
         return R(_r(
-            "¡De nada! ¿Hay algo más que quieras hacer?",
+            "¡De nada! ¿Algo más?",
             "¡Perfecto! ¿Qué más necesitas?",
-            "¡Encantado de ayudar! ¿Seguimos con algo?",
+            "¡Encantado de ayudar! ¿Seguimos?",
         ))
 
-    # ═══════════════════════════════════════════════════════════
-    # 5. FALLBACK INTELIGENTE Y VARIADO
-    # ═══════════════════════════════════════════════════════════
+    # Procesos (genérico)
+    if any(w in msgL for w in ["proceso", "procesos"]):
+        if not procesos:
+            return R("Aún no tienes procesos. Di *«crea un proceso de [nombre]»* para añadir el primero.")
+        if scores:
+            peor = min(scores, key=lambda x: x.score)
+            lines = [f"{'🔴' if p.score<40 else '🟡' if p.score<70 else '🟢'} **{p.nombre}** — {p.score}/100"
+                     for p in sorted(scores, key=lambda x: x.score)[:5]]
+            criticos = [p for p in scores if p.score < 50]
+            reply = f"📋 **{len(procesos)} proceso(s):**\n\n" + "\n".join(lines)
+            if criticos:
+                reply += f"\n\n⚠️ {len(criticos)} crítico(s). ¿Analizo **{criticos[0].nombre}**?"
+            else:
+                reply += f"\n\n✅ Ninguno crítico. El más mejorable: **{peor.nombre}** ({peor.score}/100)."
+            return R(reply)
+        lines = [f"• **{p.nombre}** ({p.estado})" for p in procesos[:5]]
+        return R(f"Tienes **{len(procesos)} proceso(s)**:\n\n" + "\n".join(lines) + "\n\nNinguno tiene score asignado aún.")
 
-    # Si hay contexto previo, responder contextualmente
-    if prev_names:
-        p = _find_proceso(procesos, prev_names[0])
-        if p:
+    # Automatizaciones (genérico)
+    if any(w in msgL for w in ["automatiz", "n8n", "zapier", "workflow"]):
+        if not autos:
+            sugs = []
+            for p in procesos[:3]:
+                nl = p.nombre.lower()
+                if "factur" in nl:
+                    sugs.append(f"• *Automatizar facturación* con n8n + Google Sheets")
+                elif "email" in nl or "correo" in nl:
+                    sugs.append(f"• *Envío automático de emails* con Gmail API")
+                else:
+                    sugs.append(f"• *Notificaciones automáticas* para {p.nombre}")
+            reply = "No tienes automatizaciones todavía.\n\n"
+            if sugs:
+                reply += "Basándome en tus procesos, podría crear:\n\n" + "\n".join(sugs[:3])
+                reply += "\n\n¿Te interesa alguna? Di *«crea una automatización de [nombre]»*."
+            else:
+                reply += "Di *«crea una automatización de [nombre]»* para empezar."
+            return R(reply)
+        activas = [a for a in autos if a.estado == "activa"]
+        horas = sum(a.horas_mes or 0 for a in autos)
+        return R(
+            f"⚡ **{len(autos)} automatización(es)** ({len(activas)} activas, **{horas}h/mes** ahorradas):\n\n"
+            + "".join(f"• **{a.nombre}** — {a.estado}\n" for a in autos[:5])
+        )
+
+    # KPIs (genérico)
+    if any(w in msgL for w in ["kpi", "indicador", "métrica", "metrica", "rendimiento"]):
+        if not kpis:
             return R(
-                f"No he entendido del todo tu pregunta. ¿Sigues hablando de **{p.nombre}**? "
-                f"Puedo analizarlo, actualizar su score o crear una automatización para él. ¿Qué prefieres?"
+                "No tienes KPIs definidos.\n\n"
+                "Los más útiles son:\n• *Tiempo de resolución*\n• *Coste por proceso*\n"
+                "• *Satisfacción del cliente (%)*\n• *Errores por ciclo*\n\n"
+                "Di *«crea un KPI de [nombre]»* para añadir uno."
             )
+        lines = [
+            f"{'↑' if k.tendencia=='up' else '↓' if k.tendencia=='down' else '→'} **{k.nombre}**: {k.valor}"
+            + (f" {k.unidad}" if k.unidad else "")
+            + (f" (obj: {k.objetivo})" if k.objetivo else "")
+            for k in kpis[:6]
+        ]
+        return R(f"📈 **{len(kpis)} KPI(s):**\n\n" + "\n".join(lines))
 
-    # Fallbacks variados con datos reales
-    opciones_fallback = []
+    # ═══════════════════════════════════════════════════════════════
+    # NIVEL 8 — FALLBACK inteligente y variado
+    # ═══════════════════════════════════════════════════════════════
 
+    # Si hay contexto previo, aprovecharlo
+    if context_proceso:
+        return R(
+            f"No he entendido del todo. ¿Sigues hablando de **{context_proceso.nombre}**? "
+            f"Puedo analizarlo, actualizar su score o crear una automatización para él. ¿Qué prefieres?"
+        )
+
+    fallbacks = [
+        "No he captado bien eso. Prueba con algo como: *«crea un proceso de [nombre]»*, "
+        "*«muéstrame mis KPIs»* o *«dame un resumen»*. ¿Qué necesitas?",
+        "Hmm, no estoy seguro de entender. ¿Quieres crear algo, analizar un proceso o ver estadísticas?",
+        f"No lo he interpretado bien. Cuéntame qué quieres hacer con tu empresa **{empresa.nombre}** y te ayudo.",
+    ]
     if scores:
         peor = min(scores, key=lambda p: p.score)
-        opciones_fallback.append(
-            f"No he captado bien eso. Ten en cuenta que tienes el proceso **{peor.nombre}** con score crítico "
-            f"({peor.score}/100). ¿Quieres que lo analice?"
+        fallbacks.append(
+            f"No he entendido tu mensaje. Recuerda que tienes **{peor.nombre}** con score crítico "
+            f"({peor.score}/100). ¿Te ayudo a mejorarlo?"
         )
-
-    opciones_fallback.append(
-        f"No he entendido tu mensaje. Recuerda que puedes pedirme que **cree** procesos, KPIs o automatizaciones, "
-        f"o que **analice** cualquier dato de {empresa.nombre}. ¿Qué necesitas?"
-    )
-
-    if not procesos:
-        opciones_fallback.append(
-            "No tengo claro qué quieres decir. Para empezar, podría crear tus primeros procesos. "
-            "Di algo como: *\"crea un proceso de atención al cliente\"*."
-        )
-
-    opciones_fallback.append(
-        "Hmm, no he podido interpretar eso. Prueba a ser más concreto: "
-        "*\"crea un proceso de [nombre]\"*, *\"analiza [proceso]\"* o *\"muéstrame mis KPIs\"*."
-    )
-
-    return R(random.choice(opciones_fallback))
+    return R(random.choice(fallbacks))
 
 
 # ─────────────────────────── Endpoints ───────────────────────────
@@ -737,7 +855,6 @@ async def chat(
 ):
     empresa = await _get_empresa(db, user)
 
-    # Buscar o crear conversación
     conv = None
     if body.conversacion_id:
         result = await db.execute(
@@ -758,7 +875,6 @@ async def chat(
         db.add(conv)
         await db.flush()
 
-    # Cargar historial
     try:
         historial = json.loads(conv.historial or "[]")
     except Exception:
@@ -766,8 +882,7 @@ async def chat(
 
     historial.append({"role": "user", "content": body.mensaje})
 
-    # ── Usar Claude si hay API key, si no smart_response ──
-    accion = None
+    accion  = None
     entidad = None
 
     if settings.ANTHROPIC_API_KEY:
@@ -775,9 +890,8 @@ async def chat(
             import anthropic
             from app.agents.safety import limpiar_input, REGLA_ANTI_CREDENCIALES
             from app.agents.prompts.analisis import SYSTEM_ANALISIS
-
             client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-            mensaje_limpio = limpiar_input(body.mensaje)
+            msg_limpio = limpiar_input(body.mensaje)
             respuesta_texto = ""
             with client.messages.stream(
                 model="claude-3-5-haiku-20241022",
@@ -788,15 +902,15 @@ async def chat(
                 for text in stream.text_stream:
                     respuesta_texto += text
         except Exception:
-            result_dict = await _smart_response(body.mensaje, empresa, db, historial)
-            respuesta_texto = result_dict["respuesta"]
-            accion = result_dict.get("accion")
-            entidad = result_dict.get("entidad")
+            result_d = await _smart_response(body.mensaje, empresa, db, historial)
+            respuesta_texto = result_d["respuesta"]
+            accion  = result_d.get("accion")
+            entidad = result_d.get("entidad")
     else:
-        result_dict = await _smart_response(body.mensaje, empresa, db, historial)
-        respuesta_texto = result_dict["respuesta"]
-        accion = result_dict.get("accion")
-        entidad = result_dict.get("entidad")
+        result_d = await _smart_response(body.mensaje, empresa, db, historial)
+        respuesta_texto = result_d["respuesta"]
+        accion  = result_d.get("accion")
+        entidad = result_d.get("entidad")
 
     historial.append({"role": "assistant", "content": respuesta_texto})
     conv.historial = json.dumps(historial, ensure_ascii=False)

@@ -6,8 +6,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from app.config import settings
 from app.database import create_tables
-from app.routers import auth, credenciales, empresas, procesos, kpis, automatizaciones, agente, users
+from app.routers import auth, credenciales, empresas, procesos, kpis, automatizaciones, agente, users, admin
 from app.middleware.rate_limit import RateLimitMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.database import AsyncSessionLocal
 
 MAX_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
 
@@ -37,9 +40,42 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+async def _bootstrap_admin():
+    """Create the default admin user and its empresa if they don't exist yet."""
+    from app.models.user import User
+    from app.models.empresa import Empresa
+    from app.auth.jwt import hash_password
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).where(User.email == settings.ADMIN_EMAIL))
+        existing = result.scalar_one_or_none()
+        if existing:
+            return
+
+        admin_user = User(
+            email=settings.ADMIN_EMAIL,
+            hashed_password=hash_password(settings.ADMIN_PASSWORD),
+            nombre="Admin",
+            apellido="BPA",
+            role="admin",
+            plan="enterprise",
+            is_active=True,
+        )
+        db.add(admin_user)
+        await db.flush()
+
+        empresa = Empresa(
+            user_id=admin_user.id,
+            nombre="BPA-Agent",
+        )
+        db.add(empresa)
+        await db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
+    await _bootstrap_admin()
     yield
 
 
@@ -79,6 +115,7 @@ app.include_router(kpis.router)
 app.include_router(automatizaciones.router)
 app.include_router(agente.router)
 app.include_router(credenciales.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

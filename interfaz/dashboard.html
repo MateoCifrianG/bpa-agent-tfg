@@ -1597,7 +1597,7 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
   <!-- ── SIDEBAR ── -->
   <aside class="sidebar">
     <div class="sidebar-top">
-      <div class="brand-icon"><img src="assets/logo-agente.png" alt="BPA"/></div>
+      <div class="brand-icon"><img src="assets/img/logo-agente.png" alt="BPA"/></div>
       <span class="brand-label">BPA-Agent</span>
     </div>
 
@@ -1643,7 +1643,7 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
           <div class="dd-avatar">AC</div>
           <div class="dd-user">
             <div class="dd-name">Acme Corp</div>
-            <div class="dd-email"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a3c2c7cecacde3c2c0cec6c0ccd1d38dc0ccce">[email&#160;protected]</a></div>
+            <div class="dd-email"></div>
           </div>
         </div>
 
@@ -1677,7 +1677,6 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
           <button class="dd-item" onclick="openModal('team')">
             <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span>Equipo</span>
-            <span class="dd-shortcut">3</span>
           </button>
           <button class="dd-item" onclick="openModal('notifications')">
             <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -1757,7 +1756,7 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
       <button class="toggle-btn" onclick="toggleSidebar()" aria-label="Colapsar sidebar">
         <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="crumb-faded">Acme Corp</span>
+      <span class="crumb-faded" id="breadcrumbEmpresa">Mi empresa</span>
       <span class="crumb-sep">/</span>
       <span class="page-title" id="pageTitle">Dashboard</span>
     </div>
@@ -2140,82 +2139,114 @@ const modalFoot = document.getElementById('modalFoot');
 const MODALS = {
   account: {
     title: 'Mi cuenta',
-    body: () => `
+    body: () => {
+      const u = window._bpaUser || {};
+      const e = window._empresa || {};
+      const nombre  = u.nombre   || '';
+      const apellido = u.apellido || '';
+      const email   = u.email    || '';
+      const empresa = e.nombre   || '';
+      const sector  = e.sector   || 'Servicios';
+      const sectores = ['Servicios','Tecnología','Retail','Industrial','Salud','Educación','Finanzas','Otro'];
+      const sectorOpts = sectores.map(s => `<option${s===sector?' selected':''}>${s}</option>`).join('');
+      return `
       <div class="field-row">
-        <div class="field"><div class="field-label">Nombre</div><input class="field-input" value="Acme Corp"/></div>
-        <div class="field"><div class="field-label">Email</div><input class="field-input" type="email" value="admin@acmecorp.com"/></div>
+        <div class="field"><div class="field-label">Nombre</div><input class="field-input" id="acc-nombre" value="${nombre}"/></div>
+        <div class="field"><div class="field-label">Apellido</div><input class="field-input" id="acc-apellido" value="${apellido}"/></div>
       </div>
-      <div class="field"><div class="field-label">Empresa</div><input class="field-input" value="Acme Corp S.L."/></div>
-      <div class="field-row">
-        <div class="field"><div class="field-label">Sector</div>
-          <select class="field-select"><option>Servicios</option><option>Tecnología</option><option>Retail</option><option>Industrial</option></select>
-        </div>
-        <div class="field"><div class="field-label">Tamaño</div>
-          <select class="field-select"><option>1-10 empleados</option><option selected>11-50 empleados</option><option>51-200 empleados</option></select>
-        </div>
-      </div>
-      <div class="field"><div class="field-label">Idioma</div>
-        <select class="field-select"><option selected>Español</option><option>English</option><option>Català</option></select>
+      <div class="field"><div class="field-label">Email</div><input class="field-input" type="email" value="${email}" readonly style="opacity:.6;cursor:not-allowed"/></div>
+      <div class="field"><div class="field-label">Empresa</div><input class="field-input" id="acc-empresa" value="${empresa}"/></div>
+      <div class="field"><div class="field-label">Sector</div>
+        <select class="field-select" id="acc-sector">${sectorOpts}</select>
       </div>
       <div class="modal-divider"></div>
       <div class="modal-section-title">Seguridad</div>
-      <div class="field"><div class="field-label">Contraseña</div><input class="field-input" type="password" value="••••••••••"/></div>
-      <div class="toggle-row">
-        <div><div class="toggle-info-title">Verificación en dos pasos</div><div class="toggle-info-sub">Añade una capa extra de seguridad</div></div>
-        <label class="switch"><input type="checkbox"/><span class="switch-slider"></span></label>
+      <div class="field"><div class="field-label">Contraseña actual</div><input class="field-input" id="acc-pw-old" type="password" placeholder="Dejar vacío para no cambiar"/></div>
+      <div class="field"><div class="field-label">Nueva contraseña</div><input class="field-input" id="acc-pw-new" type="password" placeholder="Mínimo 8 caracteres"/></div>
+      <div class="modal-divider"></div>
+      <div class="modal-section-title" style="color:var(--rose)">Zona de peligro</div>
+      <div class="toggle-row" style="background:rgba(244,63,94,.06);border-radius:10px;padding:.6rem .75rem">
+        <div><div class="toggle-info-title">Eliminar cuenta</div><div class="toggle-info-sub">Esta acción es irreversible. Se borrarán todos tus datos.</div></div>
+        <button class="btn-modal" style="background:rgba(244,63,94,.15);color:var(--rose);border:1px solid rgba(244,63,94,.3);flex-shrink:0" onclick="openDeleteAccountModal()">Eliminar</button>
       </div>
-    `,
-    foot: `<button class="btn-modal" onclick="closeModal()">Cancelar</button><button class="btn-modal primary" onclick="saveAndClose('Cambios guardados')">Guardar cambios</button>`
+    `; },
+    foot: `<button class="btn-modal" onclick="closeModal()">Cancelar</button><button class="btn-modal primary" onclick="saveAccountChanges()">Guardar cambios</button>`
   },
   billing: {
     title: 'Plan y facturación',
-    body: () => `
-      <div class="modal-section-title">Tu plan actual</div>
+    body: () => {
+      const u = window._bpaUser || {};
+      const plan = u.plan || 'free';
+      const planMap = { free: 'Gratuito', pro: 'Pro', enterprise: 'Enterprise' };
+      const planLabel = planMap[plan] || 'Gratuito';
+      const isFreePlan = plan === 'free';
+      const isProPlan  = plan === 'pro';
+      const isEntPlan  = plan === 'enterprise';
+      const numProcesos = (window._procesos || []).length;
+      const numAutos    = (window._autos    || []).length;
+      return `
+      <div class="modal-section-title">Tu plan actual: <strong style="color:var(--accent)">${planLabel}</strong></div>
       <div class="plan-grid">
-        <div class="plan-tier current">
+        <div class="plan-tier${isFreePlan?' current':''}">
           <div class="plan-tier-name">Gratuito</div>
           <div class="plan-tier-price">0€<small>/mes</small></div>
           <ul class="plan-tier-features"><li>100 consultas IA/mes</li><li>3 procesos</li><li>1 automatización activa</li></ul>
-          <button class="plan-tier-cta">Plan actual</button>
+          <button class="plan-tier-cta" ${isFreePlan?'disabled':''} onclick="saveAndClose('Ya estás en el plan Gratuito')">${isFreePlan?'Plan actual':'Bajar a Gratuito'}</button>
         </div>
-        <div class="plan-tier featured">
+        <div class="plan-tier featured${isProPlan?' current':''}">
           <div class="plan-tier-name">Pro</div>
           <div class="plan-tier-price">29€<small>/mes</small></div>
           <ul class="plan-tier-features"><li>Consultas IA ilimitadas</li><li>Procesos ilimitados</li><li>10 automatizaciones</li><li>Soporte prioritario</li></ul>
-          <button class="plan-tier-cta" onclick="saveAndClose('Plan Pro activado')">Mejorar a Pro</button>
+          <button class="plan-tier-cta" ${isProPlan?'disabled':''} onclick="saveAndClose('Contacta con ventas para activar Pro')">${isProPlan?'Plan actual':'Mejorar a Pro'}</button>
         </div>
-        <div class="plan-tier">
+        <div class="plan-tier${isEntPlan?' current':''}">
           <div class="plan-tier-name">Enterprise</div>
           <div class="plan-tier-price">A medida</div>
           <ul class="plan-tier-features"><li>Todo de Pro</li><li>SSO/SAML</li><li>Cuenta dedicada</li><li>SLA 99.9%</li></ul>
-          <button class="plan-tier-cta" onclick="saveAndClose('Te contactaremos pronto')">Contactar ventas</button>
+          <button class="plan-tier-cta" ${isEntPlan?'disabled':''} onclick="saveAndClose('Te contactaremos pronto')">${isEntPlan?'Plan actual':'Contactar ventas'}</button>
         </div>
       </div>
       <div class="modal-divider"></div>
-      <div class="modal-section-title">Uso este mes</div>
+      <div class="modal-section-title">Uso actual</div>
       <div class="field-row">
-        <div><div class="field-label">Consultas IA</div><div style="font-family:'Instrument Serif',serif;font-size:1.4rem;color:var(--fg)">65 / 100</div></div>
-        <div><div class="field-label">Automatizaciones</div><div style="font-family:'Instrument Serif',serif;font-size:1.4rem;color:var(--fg)">1 / 1</div></div>
+        <div><div class="field-label">Procesos</div><div style="font-family:'Instrument Serif',serif;font-size:1.4rem;color:var(--fg)">${numProcesos}</div></div>
+        <div><div class="field-label">Automatizaciones</div><div style="font-family:'Instrument Serif',serif;font-size:1.4rem;color:var(--fg)">${numAutos}</div></div>
       </div>
+      <div class="modal-divider"></div>
       <div class="modal-section-title">Método de pago</div>
-      <div class="team-row"><div class="team-avatar" style="background:linear-gradient(135deg,#1a1f71,#10266b)">VI</div><div class="team-info"><div class="team-name">Visa terminada en 4242</div><div class="team-email">Caduca 09/27</div></div><button class="integ-btn">Cambiar</button></div>
-    `,
+      <div style="padding:.75rem 0;color:var(--fg-3);font-size:.85rem;display:flex;align-items:center;gap:.5rem">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        No hay método de pago registrado
+      </div>
+    `; },
     foot: `<button class="btn-modal" onclick="closeModal()">Cerrar</button>`
   },
   team: {
     title: 'Equipo',
-    body: () => `
+    body: () => {
+      const u = window._bpaUser || {};
+      const e = window._empresa || {};
+      const nombre   = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Usuario';
+      const initials = ((u.nombre||'U')[0]+(u.apellido||'U')[0]).toUpperCase();
+      const empresa  = e.nombre || 'Mi empresa';
+      return `
       <div class="field"><div class="field-label">Invitar por email</div>
-        <div style="display:flex;gap:.4rem"><input class="field-input" placeholder="email@empresa.com" style="flex:1"/><button class="btn-modal primary" onclick="toast('Invitación enviada')">Invitar</button></div>
+        <div style="display:flex;gap:.4rem"><input class="field-input" placeholder="email@empresa.com" style="flex:1"/><button class="btn-modal primary" onclick="toast('Función disponible en Plan Pro')">Invitar</button></div>
       </div>
       <div class="modal-divider"></div>
-      <div class="modal-section-title">Miembros (3)</div>
+      <div class="modal-section-title">Miembros (1)</div>
       <div class="team-list">
-        <div class="team-row"><div class="team-avatar" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">AC</div><div class="team-info"><div class="team-name">Acme Corp (tú)</div><div class="team-email">admin@acmecorp.com</div></div><span class="team-role owner">Owner</span></div>
-        <div class="team-row"><div class="team-avatar" style="background:linear-gradient(135deg,#22d3ee,#10b981)">MG</div><div class="team-info"><div class="team-name">Marta García</div><div class="team-email">marta@acmecorp.com</div></div><span class="team-role">Editor</span></div>
-        <div class="team-row"><div class="team-avatar" style="background:linear-gradient(135deg,#f59e0b,#f43f5e)">JR</div><div class="team-info"><div class="team-name">Javier Ruiz</div><div class="team-email">javier@acmecorp.com</div></div><span class="team-role">Viewer</span></div>
+        <div class="team-row">
+          <div class="team-avatar" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">${initials}</div>
+          <div class="team-info">
+            <div class="team-name">${nombre} <span style="color:var(--fg-3);font-size:.75rem">(tú)</span></div>
+            <div class="team-email">${u.email||''}</div>
+          </div>
+          <span class="team-role owner">Owner</span>
+        </div>
       </div>
-    `,
+      <div style="padding:.75rem 0;color:var(--fg-3);font-size:.82rem">Invita miembros de tu equipo con el Plan Pro.</div>
+    `; },
     foot: `<button class="btn-modal" onclick="closeModal()">Cerrar</button>`
   },
   notifications: {
@@ -2347,6 +2378,85 @@ function saveAndClose(msg) {
   closeModal();
   toast(msg || 'Guardado');
 }
+
+async function saveAccountChanges() {
+  const nombre   = document.getElementById('acc-nombre')?.value?.trim();
+  const apellido = document.getElementById('acc-apellido')?.value?.trim();
+  const pwOld    = document.getElementById('acc-pw-old')?.value;
+  const pwNew    = document.getElementById('acc-pw-new')?.value;
+  try {
+    // Actualizar nombre/apellido
+    if (nombre || apellido) {
+      await BPA.put('/api/users/me', { nombre, apellido });
+      // Actualizar datos en sesión
+      const { user } = API.session.get();
+      if (user) {
+        user.nombre   = nombre   || user.nombre;
+        user.apellido = apellido || user.apellido;
+        sessionStorage.setItem('bpa_user', JSON.stringify(user));
+        window._bpaUser = user;
+        // Refrescar sidebar
+        const initials  = ((user.nombre||'U')[0]+(user.apellido||'U')[0]).toUpperCase();
+        const fullName  = [user.nombre, user.apellido].filter(Boolean).join(' ') || user.email;
+        document.querySelectorAll('.avatar, .dd-avatar').forEach(el => el.textContent = initials);
+        document.querySelectorAll('.user-name, .dd-name').forEach(el => el.textContent = fullName);
+      }
+    }
+    // Cambiar contraseña si se rellenó
+    if (pwOld && pwNew) {
+      if (pwNew.length < 8) { toast('La nueva contraseña debe tener al menos 8 caracteres', 'err'); return; }
+      await BPA.post('/api/users/me/password', { password_actual: pwOld, password_nuevo: pwNew });
+    }
+    closeModal();
+    toast('Cambios guardados correctamente');
+  } catch (err) {
+    toast(err.message || 'Error al guardar', 'err');
+  }
+}
+function openDeleteAccountModal() {
+  closeModal();
+  openModal('custom', 'Eliminar cuenta', `
+    <div style="text-align:center;padding:.5rem 0">
+      <div style="font-size:2rem;margin-bottom:.75rem">⚠️</div>
+      <p style="color:var(--fg-2);margin-bottom:1.25rem;line-height:1.5">
+        Esta acción eliminará tu cuenta y <strong style="color:var(--rose)">todos tus datos</strong>
+        (procesos, KPIs, automatizaciones, conversaciones) de forma <strong>irreversible</strong>.
+      </p>
+      <div class="field">
+        <div class="field-label">Confirma tu contraseña para continuar</div>
+        <input class="field-input" id="del-pw-confirm" type="password" placeholder="Tu contraseña actual" autofocus/>
+      </div>
+    </div>
+  `, `
+    <button class="btn-modal" onclick="closeModal()">Cancelar</button>
+    <button class="btn-modal" style="background:rgba(244,63,94,.2);color:var(--rose);border:1px solid rgba(244,63,94,.4)" onclick="confirmDeleteAccount()">Eliminar mi cuenta</button>
+  `);
+}
+
+async function confirmDeleteAccount() {
+  const pw = document.getElementById('del-pw-confirm')?.value;
+  if (!pw) { toast('Introduce tu contraseña', 'err'); return; }
+  try {
+    const { token } = API.session.get();
+    const r = await fetch('http://localhost:8001/api/users/me', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ password: pw }),
+      credentials: 'include',
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || `Error ${r.status}`);
+    }
+    API.session.clear();
+    closeModal();
+    toast('Cuenta eliminada. Redirigiendo…');
+    setTimeout(() => { window.location.href = 'index.html'; }, 1500);
+  } catch (err) {
+    toast(err.message || 'Error al eliminar cuenta', 'err');
+  }
+}
+
 function copyApi() {
   const inp = document.getElementById('apiKeyInput');
   if (inp) {
@@ -2374,10 +2484,16 @@ if (homeChatInputEl) {
 <script src="assets/js/api.js"></script>
 <script src="assets/js/dashboard.js"></script>
 <script>
+// Variable global del usuario autenticado (accesible desde modales)
+window._bpaUser = null;
+
 (function initSession() {
   // Guard: redirige a login si no hay sesión
   const user = API.guard();
   if (!user) return;
+
+  // Exponer globalmente para usar en modales dinámicos
+  window._bpaUser = user;
 
   // Mover el dropdown al <body> para escapar del backdrop-filter del sidebar
   const dropdown = document.getElementById('userDropdown');

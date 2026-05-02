@@ -243,7 +243,7 @@ html,body{height:100%;background:var(--bg);color:var(--fg);font-family:"Inter",s
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sidebar-top">
-      <div class="brand-icon"><img src="assets/img/logo.png" alt="BPA"/></div>
+      <div class="brand-icon"><img src="assets/img/logo-agente.png" alt="BPA"/></div>
       <span class="brand-label">BPA-Agent</span>
       <span class="admin-badge">ADMIN</span>
     </div>
@@ -462,19 +462,50 @@ html,body{height:100%;background:var(--bg);color:var(--fg);font-family:"Inter",s
 
 <div class="toast" id="toast"><svg id="toastIcon" viewBox="0 0 24 24"></svg><span id="toastMsg"></span></div>
 
-<script src="assets/js/db.js"></script>
 <script src="assets/js/api.js"></script>
 <script>
 const AVATAR_COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#06b6d4','#f43f5e'];
 
+// In-memory cache of users list loaded from the API
+let _usersCache = [];
+
+// ── API helper ────────────────────────────────────────────────────────────
+async function adminFetch(path, opts = {}) {
+  const token = sessionStorage.getItem('bpa_token');
+  const r = await fetch('http://localhost:8001' + path, {
+    ...opts,
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+    },
+    credentials: 'include',
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => {});
+    throw new Error(e?.detail || 'Error ' + r.status);
+  }
+  if (r.status === 204) return null;
+  return r.json();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  // Intentar guard con api.js primero; si no hay sesión real, intentar con db.js como fallback
   const apiUser = API.guard('admin');
   if (!apiUser) return;
   document.getElementById('adminName').textContent = apiUser.nombre || apiUser.email;
-  renderOverview();
-  renderUsersTable();
+  loadAndRender();
 });
+
+async function loadAndRender() {
+  try {
+    _usersCache = await adminFetch('/api/admin/users');
+    renderOverview();
+    renderUsersTable();
+  } catch (err) {
+    toast('Error al cargar datos: ' + err.message, 'err');
+  }
+}
 
 // ── Sections ──────────────────────────────────────────────────────────────
 function showSection(name) {
@@ -492,17 +523,26 @@ function setActive(el) {
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────
-function renderOverview() {
-  const s = Users.globalStats();
+async function renderOverview() {
+  let s;
+  try {
+    s = await adminFetch('/api/admin/stats');
+  } catch (err) {
+    toast('Error al cargar estadísticas: ' + err.message, 'err');
+    return;
+  }
+
+  const users = _usersCache;
+  const inactivos = s.total_users - s.users_activos;
 
   const kpis = [
-    { label:'Usuarios totales', value: s.total, sub: `${s.activos} activos · ${s.inactivos} inactivos`, color:'var(--amber)', bg:'rgba(245,158,11,.1)', icon:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>' },
-    { label:'Usuarios Pro', value: s.pro, sub: `${s.free} en plan gratuito`, color:'var(--indigo)', bg:'rgba(99,102,241,.1)', icon:'<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>' },
-    { label:'Procesos totales', value: s.total_procesos, sub: `${s.avg_score} score medio`, color:'var(--accent)', bg:'rgba(var(--accent-rgb),.1)', icon:'<circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><path d="M12 8v3M8.25 16.5 12 11M15.75 16.5 12 11"/>' },
-    { label:'Horas ahorradas', value: s.total_horas + 'h', sub: `${s.total_automatizaciones} automatizaciones`, color:'var(--emerald)', bg:'rgba(16,185,129,.1)', icon:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>' },
+    { label:'Usuarios totales', value: s.total_users, sub: `${s.users_activos} activos · ${inactivos} inactivos`, color:'var(--amber)', bg:'rgba(245,158,11,.1)', icon:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>' },
+    { label:'Usuarios Pro', value: s.users_pro, sub: `${s.users_free} en plan gratuito`, color:'var(--indigo)', bg:'rgba(99,102,241,.1)', icon:'<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>' },
+    { label:'Procesos totales', value: s.total_procesos, sub: `${s.score_promedio} score medio`, color:'var(--accent)', bg:'rgba(var(--accent-rgb),.1)', icon:'<circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><path d="M12 8v3M8.25 16.5 12 11M15.75 16.5 12 11"/>' },
+    { label:'Horas ahorradas', value: s.horas_totales + 'h', sub: `${s.total_autos} automatizaciones`, color:'var(--emerald)', bg:'rgba(16,185,129,.1)', icon:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>' },
   ];
 
-  document.getElementById('kpiGrid').innerHTML = kpis.map((k,i) => `
+  document.getElementById('kpiGrid').innerHTML = kpis.map((k, i) => `
     <div class="kpi fade-up d${i+1}" style="--kpi-color:${k.color};--kpi-bg:${k.bg}">
       <div class="kpi-header">
         <span class="kpi-label">${k.label}</span>
@@ -512,26 +552,26 @@ function renderOverview() {
       <div class="kpi-sub">${k.sub}</div>
     </div>`).join('');
 
-  // Recent users (last 4)
-  const users = Users.all().filter(u => u.role !== 'admin').slice(-4).reverse();
+  // Recent users (last 4, non-admin)
+  const recent = users.filter(u => u.role !== 'admin').slice(0, 4);
   document.getElementById('recentUsersTable').innerHTML = `
     <thead><tr><th>Usuario</th><th>Plan</th><th>Estado</th></tr></thead>
-    <tbody>${users.map(u => `
+    <tbody>${recent.map(u => `
       <tr>
         <td><div class="user-cell">
-          <div class="u-avatar" style="background:${avatarColor(u.id)}">${u.avatar}</div>
-          <div><div class="u-name">${u.nombre} ${u.apellido}</div><div class="u-email">${u.empresa}</div></div>
+          <div class="u-avatar" style="background:${avatarColor(u.id)}">${avatarInitials(u)}</div>
+          <div><div class="u-name">${esc(u.nombre)} ${esc(u.apellido)}</div><div class="u-email">${esc(u.empresa_nombre || '')}</div></div>
         </div></td>
-        <td><span class="plan-pill ${u.plan}">${{free:'Gratuito',pro:'Pro',enterprise:'Enterprise'}[u.plan]}</span></td>
-        <td><span class="status-pill ${u.activo?'active':'inactive'}"><span class="status-dot"></span>${u.activo?'Activo':'Inactivo'}</span></td>
+        <td><span class="plan-pill ${u.plan}">${planLabel(u.plan)}</span></td>
+        <td><span class="status-pill ${u.is_active ? 'active' : 'inactive'}"><span class="status-dot"></span>${u.is_active ? 'Activo' : 'Inactivo'}</span></td>
       </tr>`).join('')}
     </tbody>`;
 
   // Plan distribution
-  const plans = {free: s.free, pro: s.pro, enterprise: s.total - s.free - s.pro};
+  const planCounts = {free: s.users_free, pro: s.users_pro, enterprise: s.users_enterprise};
   const planLabels = {free:{label:'Gratuito',color:'var(--accent)'},pro:{label:'Pro',color:'var(--indigo)'},enterprise:{label:'Enterprise',color:'var(--amber)'}};
-  document.getElementById('planDist').innerHTML = Object.entries(plans).map(([k,v]) => {
-    const pct = s.total ? Math.round(v/s.total*100) : 0;
+  document.getElementById('planDist').innerHTML = Object.entries(planCounts).map(([k, v]) => {
+    const pct = s.total_users ? Math.round(v / s.total_users * 100) : 0;
     return `<div>
       <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.4rem">
         <span style="color:var(--fg-2)">${planLabels[k].label}</span>
@@ -550,192 +590,291 @@ function renderUsersTable() {
   const plan   = document.getElementById('planFilter')?.value || '';
   const status = document.getElementById('statusFilter')?.value || '';
 
-  let users = Users.all();
-  if (search) users = users.filter(u => `${u.nombre} ${u.apellido} ${u.email} ${u.empresa}`.toLowerCase().includes(search));
+  let users = _usersCache.slice();
+  if (search) users = users.filter(u =>
+    `${u.nombre} ${u.apellido} ${u.email} ${u.empresa_nombre || ''}`.toLowerCase().includes(search));
   if (role)   users = users.filter(u => u.role === role);
   if (plan)   users = users.filter(u => u.plan === plan);
-  if (status !== '') users = users.filter(u => String(u.activo) === status);
+  if (status !== '') users = users.filter(u => String(u.is_active) === status);
 
   document.getElementById('resultsCount').textContent = `${users.length} resultado${users.length !== 1 ? 's' : ''}`;
 
   document.getElementById('usersTableBody').innerHTML = users.map(u => `
     <tr>
       <td><div class="user-cell">
-        <div class="u-avatar" style="background:${avatarColor(u.id)}">${u.avatar}</div>
-        <div><div class="u-name">${u.nombre} ${u.apellido}</div><div class="u-email">${u.email}</div></div>
+        <div class="u-avatar" style="background:${avatarColor(u.id)}">${avatarInitials(u)}</div>
+        <div><div class="u-name">${esc(u.nombre)} ${esc(u.apellido)}</div><div class="u-email">${esc(u.email)}</div></div>
       </div></td>
       <td><span class="role-pill ${u.role}">${u.role === 'admin' ? 'Admin' : 'Usuario'}</span></td>
-      <td><span class="plan-pill ${u.plan}">${{free:'Gratuito',pro:'Pro',enterprise:'Enterprise'}[u.plan]}</span></td>
-      <td><span class="status-pill ${u.activo?'active':'inactive'}">
-        <span class="status-dot"></span>${u.activo?'Activo':'Inactivo'}</span></td>
-      <td style="color:var(--fg-2)">${u.stats.procesos}</td>
-      <td style="color:var(--fg-2)">${u.stats.automatizaciones}</td>
-      <td style="color:var(--fg-3)">${new Date(u.createdAt).toLocaleDateString('es-ES')}</td>
+      <td><span class="plan-pill ${u.plan}">${planLabel(u.plan)}</span></td>
+      <td><span class="status-pill ${u.is_active ? 'active' : 'inactive'}">
+        <span class="status-dot"></span>${u.is_active ? 'Activo' : 'Inactivo'}</span></td>
+      <td style="color:var(--fg-2)">${u.procesos_count}</td>
+      <td style="color:var(--fg-2)">${u.autos_count}</td>
+      <td style="color:var(--fg-3)">${u.created_at ? new Date(u.created_at).toLocaleDateString('es-ES') : '-'}</td>
       <td><div class="action-row">
         <button class="act-btn" onclick="openEditModal('${u.id}')">Editar</button>
-        ${u.role !== 'admin' ? `<button class="act-btn" onclick="toggleUser('${u.id}')">${u.activo?'Desactivar':'Activar'}</button>` : ''}
+        ${u.role !== 'admin' ? `<button class="act-btn" onclick="toggleUser('${u.id}', ${u.is_active})">${u.is_active ? 'Desactivar' : 'Activar'}</button>` : ''}
         ${u.role !== 'admin' ? `<button class="act-btn danger" onclick="openDeleteModal('${u.id}')">Eliminar</button>` : ''}
       </div></td>
     </tr>`).join('');
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
-function renderStats() {
-  const s = Users.globalStats();
+async function renderStats() {
+  let s;
+  try {
+    s = await adminFetch('/api/admin/stats');
+  } catch (err) {
+    toast('Error al cargar estadísticas: ' + err.message, 'err');
+    return;
+  }
+
+  const total = s.total_users || 1;
+  const paidUsers = s.users_pro + s.users_enterprise;
   const stats = [
-    {label:'Score promedio',value:s.avg_score+'/100',sub:'Entre todos los usuarios'},
-    {label:'Horas/usuario',value:s.total ? Math.round(s.total_horas/s.total)+'h':'-',sub:'Media mensual estimada'},
-    {label:'Procesos/usuario',value:s.total ? (s.total_procesos/s.total).toFixed(1):'-',sub:'Media de procesos por cuenta'},
-    {label:'Conversión Pro',value:s.total ? Math.round(s.pro/s.total*100)+'%':'-',sub:'Usuarios en plan de pago'},
-    {label:'Tasa activos',value:s.total ? Math.round(s.activos/s.total*100)+'%':'-',sub:'Cuentas activas'},
-    {label:'Automatiz. totales',value:s.total_automatizaciones,sub:'En todas las cuentas'},
+    {label:'Score promedio', value: s.score_promedio + '/100', sub:'Entre todos los procesos'},
+    {label:'Horas/usuario', value: s.total_users ? Math.round(s.horas_totales / s.total_users) + 'h' : '-', sub:'Media mensual estimada'},
+    {label:'Procesos/usuario', value: s.total_users ? (s.total_procesos / s.total_users).toFixed(1) : '-', sub:'Media de procesos por cuenta'},
+    {label:'Conversión Pro', value: s.total_users ? Math.round(paidUsers / total * 100) + '%' : '-', sub:'Usuarios en plan de pago'},
+    {label:'Tasa activos', value: s.total_users ? Math.round(s.users_activos / total * 100) + '%' : '-', sub:'Cuentas activas'},
+    {label:'Automatiz. totales', value: s.total_autos, sub:'En todas las cuentas'},
   ];
-  document.getElementById('statsMini').innerHTML = stats.map(s => `
+  document.getElementById('statsMini').innerHTML = stats.map(st => `
     <div class="stat-mini">
-      <div class="stat-mini-label">${s.label}</div>
-      <div class="stat-mini-value">${s.value}</div>
-      <div class="stat-mini-sub">${s.sub}</div>
+      <div class="stat-mini-label">${st.label}</div>
+      <div class="stat-mini-value">${st.value}</div>
+      <div class="stat-mini-sub">${st.sub}</div>
     </div>`).join('');
 
-  const plans = {free:{label:'Gratuito',color:'var(--accent)'},pro:{label:'Pro',color:'var(--indigo)'},enterprise:{label:'Enterprise',color:'var(--amber)'}};
-  const planCounts = {free:s.free,pro:s.pro,enterprise:s.total-s.free-s.pro};
-  document.getElementById('planDistStats').innerHTML = Object.entries(planCounts).map(([k,v]) => {
-    const pct = s.total ? Math.round(v/s.total*100) : 0;
+  const planInfos = {free:{label:'Gratuito',color:'var(--accent)'},pro:{label:'Pro',color:'var(--indigo)'},enterprise:{label:'Enterprise',color:'var(--amber)'}};
+  const planCounts = {free: s.users_free, pro: s.users_pro, enterprise: s.users_enterprise};
+  document.getElementById('planDistStats').innerHTML = Object.entries(planCounts).map(([k, v]) => {
+    const pct = s.total_users ? Math.round(v / total * 100) : 0;
     return `<div>
       <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.4rem">
-        <span style="color:var(--fg-2)">${plans[k].label}</span>
+        <span style="color:var(--fg-2)">${planInfos[k].label}</span>
         <span style="color:var(--fg-3)">${v} (${pct}%)</span>
       </div>
       <div style="height:6px;background:var(--s2);border-radius:3px;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:${plans[k].color};border-radius:3px"></div>
+        <div style="height:100%;width:${pct}%;background:${planInfos[k].color};border-radius:3px"></div>
       </div></div>`;
   }).join('');
 
-  const top = Users.all().filter(u=>u.role!=='admin').sort((a,b)=>b.stats.procesos-a.stats.procesos).slice(0,5);
+  const top = _usersCache.filter(u => u.role !== 'admin')
+    .sort((a, b) => b.procesos_count - a.procesos_count).slice(0, 5);
   document.getElementById('topUsersTable').innerHTML = `
-    <thead><tr><th>Usuario</th><th>Empresa</th><th>Procesos</th><th>Score</th></tr></thead>
-    <tbody>${top.map((u,i) => `<tr>
+    <thead><tr><th>Usuario</th><th>Empresa</th><th>Procesos</th><th>KPIs</th></tr></thead>
+    <tbody>${top.map(u => `<tr>
       <td><div class="user-cell">
-        <div class="u-avatar" style="background:${avatarColor(u.id)}">${u.avatar}</div>
-        <div class="u-name">${u.nombre} ${u.apellido}</div>
+        <div class="u-avatar" style="background:${avatarColor(u.id)}">${avatarInitials(u)}</div>
+        <div class="u-name">${esc(u.nombre)} ${esc(u.apellido)}</div>
       </div></td>
-      <td style="color:var(--fg-3)">${u.empresa}</td>
-      <td style="font-weight:600">${u.stats.procesos}</td>
-      <td style="color:var(--accent)">${u.stats.score}</td>
+      <td style="color:var(--fg-3)">${esc(u.empresa_nombre || '-')}</td>
+      <td style="font-weight:600">${u.procesos_count}</td>
+      <td style="color:var(--accent)">${u.kpis_count}</td>
     </tr>`).join('')}</tbody>`;
 }
 
 // ── CRUD actions ──────────────────────────────────────────────────────────
-function openCreateModal() { closeModal('modal-create'); openModal('modal-create'); }
+function openCreateModal() {
+  ['c-nombre','c-apellido','c-empresa','c-email','c-password'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('c-plan').value = 'free';
+  openModal('modal-create');
+}
 
-function createUser() {
+async function createUser() {
   const data = {
-    nombre:   document.getElementById('c-nombre').value.trim(),
-    apellido: document.getElementById('c-apellido').value.trim(),
-    empresa:  document.getElementById('c-empresa').value.trim(),
-    email:    document.getElementById('c-email').value.trim(),
-    password: document.getElementById('c-password').value,
-    plan:     document.getElementById('c-plan').value,
+    nombre:        document.getElementById('c-nombre').value.trim(),
+    apellido:      document.getElementById('c-apellido').value.trim(),
+    empresa_nombre: document.getElementById('c-empresa').value.trim(),
+    email:         document.getElementById('c-email').value.trim(),
+    password:      document.getElementById('c-password').value,
+    plan:          document.getElementById('c-plan').value,
   };
   if (!data.email || !data.password || data.password.length < 8)
     return toast('Email y contraseña (≥8 chars) requeridos', 'err');
-  const r = Users.create(data);
-  if (r.ok) { closeModal('modal-create'); renderUsersTable(); renderOverview(); toast('Usuario creado', 'ok'); }
-  else { toast(r.error, 'err'); }
+  try {
+    const created = await adminFetch('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    _usersCache.unshift(created);
+    closeModal('modal-create');
+    renderUsersTable();
+    renderOverview();
+    toast('Usuario creado', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
 }
 
 function openEditModal(id) {
-  const u = Users.getById(id);
+  const u = _usersCache.find(x => x.id === id);
   if (!u) return;
-  document.getElementById('e-id').value      = u.id;
-  document.getElementById('e-nombre').value  = u.nombre;
-  document.getElementById('e-apellido').value= u.apellido;
-  document.getElementById('e-empresa').value = u.empresa;
-  document.getElementById('e-email').value   = u.email;
-  document.getElementById('e-plan').value    = u.plan;
+  document.getElementById('e-id').value       = u.id;
+  document.getElementById('e-nombre').value   = u.nombre;
+  document.getElementById('e-apellido').value = u.apellido;
+  document.getElementById('e-empresa').value  = u.empresa_nombre || '';
+  document.getElementById('e-email').value    = u.email;
+  document.getElementById('e-plan').value     = u.plan;
   openModal('modal-edit');
 }
 
-function saveEdit() {
-  const id = document.getElementById('e-id').value;
-  const changes = {
-    nombre:   document.getElementById('e-nombre').value.trim(),
-    apellido: document.getElementById('e-apellido').value.trim(),
-    empresa:  document.getElementById('e-empresa').value.trim(),
-    email:    document.getElementById('e-email').value.trim(),
-    plan:     document.getElementById('e-plan').value,
-  };
-  const r = Users.update(id, changes);
-  if (r.ok) { closeModal('modal-edit'); renderUsersTable(); renderOverview(); toast('Usuario actualizado','ok'); }
-  else { toast(r.error,'err'); }
+async function saveEdit() {
+  const id   = document.getElementById('e-id').value;
+  const plan = document.getElementById('e-plan').value;
+  try {
+    const updated = await adminFetch('/api/admin/users/' + id, {
+      method: 'PUT',
+      body: JSON.stringify({ plan }),
+    });
+    const idx = _usersCache.findIndex(x => x.id === id);
+    if (idx !== -1) _usersCache[idx] = updated;
+    closeModal('modal-edit');
+    renderUsersTable();
+    renderOverview();
+    toast('Usuario actualizado', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
 }
 
-function toggleUser(id) {
-  Users.toggleActive(id);
-  renderUsersTable();
-  renderOverview();
-  toast('Estado actualizado','ok');
+async function toggleUser(id, currentlyActive) {
+  try {
+    const updated = await adminFetch('/api/admin/users/' + id, {
+      method: 'PUT',
+      body: JSON.stringify({ is_active: !currentlyActive }),
+    });
+    const idx = _usersCache.findIndex(x => x.id === id);
+    if (idx !== -1) _usersCache[idx] = updated;
+    renderUsersTable();
+    renderOverview();
+    toast('Estado actualizado', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
 }
 
 function openDeleteModal(id) {
-  const u = Users.getById(id);
+  const u = _usersCache.find(x => x.id === id);
   document.getElementById('deleteMsg').textContent =
-    `¿Eliminar a ${u?.nombre} ${u?.apellido} (${u?.email})? Esta acción es irreversible.`;
+    `¿Eliminar a ${u ? esc(u.nombre) + ' ' + esc(u.apellido) + ' (' + esc(u.email) + ')' : id}? Esta acción es irreversible.`;
   document.getElementById('delete-id').value = id;
   openModal('modal-delete');
 }
 
-function confirmDelete() {
+async function confirmDelete() {
   const id = document.getElementById('delete-id').value;
-  Users.delete(id);
-  closeModal('modal-delete');
-  renderUsersTable();
-  renderOverview();
-  toast('Usuario eliminado','ok');
+  try {
+    await adminFetch('/api/admin/users/' + id, { method: 'DELETE' });
+    _usersCache = _usersCache.filter(x => x.id !== id);
+    closeModal('modal-delete');
+    renderUsersTable();
+    renderOverview();
+    toast('Usuario eliminado', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
 }
 
 // ── System ────────────────────────────────────────────────────────────────
 function resetDBConfirm() {
-  if (confirm('¿Resetear la BD a los datos de seed? Se perderán cambios.')) {
-    resetDB();
-    renderOverview();
-    renderUsersTable();
-    toast('BD reseteada a datos iniciales','ok');
-  }
+  toast('Resetear BD no disponible en modo API real', 'err');
 }
 
-function exportAllData() {
-  const data = JSON.stringify(_getDB(), null, 2);
-  const blob = new Blob([data], {type:'application/json'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = 'bpa-db-export.json'; a.click();
-  toast('Exportación descargada','ok');
+async function exportAllData() {
+  try {
+    const users = await adminFetch('/api/admin/users');
+
+    // Cabeceras CSV
+    const headers = [
+      'ID','Nombre','Apellido','Email','Rol','Plan','Activo',
+      'Empresa','Procesos','Automatizaciones','KPIs','Horas ahorradas','Fecha registro'
+    ];
+
+    // Función de escape CSV (envuelve en comillas si tiene coma/salto/comilla)
+    const csvCell = v => {
+      const s = String(v ?? '');
+      return (s.includes(',') || s.includes('"') || s.includes('\n'))
+        ? `"${s.replace(/"/g,'""')}"` : s;
+    };
+
+    const rows = [
+      headers.join(','),
+      ...users.map(u => [
+        u.id,
+        u.nombre,
+        u.apellido,
+        u.email,
+        u.role,
+        u.plan,
+        u.is_active ? 'Sí' : 'No',
+        u.empresa_nombre || '',
+        u.procesos_count  ?? 0,
+        u.autos_count     ?? 0,
+        u.kpis_count      ?? 0,
+        u.horas_ahorradas ?? 0,
+        u.created_at ? new Date(u.created_at).toLocaleDateString('es-ES') : '',
+      ].map(csvCell).join(','))
+    ];
+
+    // BOM UTF-8 para que Excel abra el CSV correctamente con acentos
+    const BOM = '﻿';
+    const csv = BOM + rows.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const fecha = new Date().toISOString().slice(0,10);
+    a.download = `bpa-usuarios-${fecha}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast(`Exportados ${users.length} usuarios a CSV`, 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function avatarColor(id) {
-  const idx = parseInt(id.replace(/\D/g,'')) % AVATAR_COLORS.length;
-  return AVATAR_COLORS[isNaN(idx) ? 0 : idx];
+  // Use character codes from uuid for stable colour
+  let n = 0;
+  for (let i = 0; i < id.length; i++) n += id.charCodeAt(i);
+  return AVATAR_COLORS[n % AVATAR_COLORS.length];
+}
+
+function avatarInitials(u) {
+  const a = (u.nombre || '').charAt(0).toUpperCase();
+  const b = (u.apellido || '').charAt(0).toUpperCase();
+  return b ? a + b : a + a;
+}
+
+function planLabel(p) {
+  return {free:'Gratuito', pro:'Pro', enterprise:'Enterprise'}[p] || p;
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 let toastTimer;
-function toast(msg, type='ok') {
+function toast(msg, type = 'ok') {
   const el = document.getElementById('toast');
   const ic = document.getElementById('toastIcon');
   document.getElementById('toastMsg').textContent = msg;
   el.className = 'toast ' + type;
-  ic.innerHTML = type==='ok' ? '<polyline points="20 6 9 17 4 12"/>' :
-    '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>';
+  ic.innerHTML = type === 'ok'
+    ? '<polyline points="20 6 9 17 4 12"/>'
+    : '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>';
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
 }
-
-// Exponer _getDB para exportar (compatibilidad)
-function _getDB() { return JSON.parse(localStorage.getItem('bpa_db') || '{}'); }
 </script>
 </body>
 </html>

@@ -541,14 +541,14 @@ html,body{height:100%;background:var(--bg);color:var(--fg);font-family:"Inter",s
               <div class="danger-label">Desactivar mi cuenta</div>
               <div class="danger-desc">Tu cuenta quedará en pausa. Puedes reactivarla contactando con soporte</div>
             </div>
-            <button class="btn btn-ghost btn-sm" onclick="openModal('modal-desactivar')">Desactivar</button>
+            <button class="btn btn-ghost btn-sm" onclick="openDeactivateModal()">Desactivar</button>
           </div>
           <div class="danger-row">
             <div>
               <div class="danger-label">Eliminar cuenta permanentemente</div>
               <div class="danger-desc">Esta acción es irreversible. Se borrarán todos tus datos</div>
             </div>
-            <button class="btn btn-danger btn-sm" onclick="openModal('modal-eliminar')">Eliminar cuenta</button>
+            <button class="btn btn-danger btn-sm" onclick="openDeleteModal()">Eliminar cuenta</button>
           </div>
         </div>
       </div>
@@ -560,7 +560,11 @@ html,body{height:100%;background:var(--bg);color:var(--fg);font-family:"Inter",s
 <div class="modal-overlay" id="modal-desactivar" onclick="closeModal('modal-desactivar')">
   <div class="modal" onclick="event.stopPropagation()">
     <h3>¿Desactivar cuenta?</h3>
-    <p>Tu cuenta quedará en pausa. Tus datos se conservan y puedes reactivarla cuando quieras contactando con soporte@bpa-agent.com.</p>
+    <p>Tu cuenta quedará en pausa. Tus datos se conservan y puedes reactivarla contactando con soporte@bpa-agent.com.</p>
+    <div class="field" style="margin-top:.75rem">
+      <label style="font-size:.78rem;color:var(--fg-2);margin-bottom:.35rem;display:block">Confirma tu contraseña</label>
+      <input type="password" id="deactivate-pw" class="field-input" placeholder="Tu contraseña actual" style="width:100%;padding:.5rem .75rem;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--fg);font-size:.85rem"/>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-desactivar')">Cancelar</button>
       <button class="btn btn-ghost" onclick="deactivateAccount()">Sí, desactivar</button>
@@ -573,6 +577,10 @@ html,body{height:100%;background:var(--bg);color:var(--fg);font-family:"Inter",s
   <div class="modal" onclick="event.stopPropagation()">
     <h3>¿Eliminar cuenta?</h3>
     <p>Esta acción es <strong style="color:var(--rose)">permanente e irreversible</strong>. Se borrarán todos tus procesos, automatizaciones y datos asociados.</p>
+    <div class="field" style="margin-top:.75rem">
+      <label style="font-size:.78rem;color:var(--fg-2);margin-bottom:.35rem;display:block">Confirma tu contraseña</label>
+      <input type="password" id="delete-pw" class="field-input" placeholder="Tu contraseña actual" style="width:100%;padding:.5rem .75rem;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--fg);font-size:.85rem"/>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-eliminar')">Cancelar</button>
       <button class="btn btn-danger" onclick="deleteAccount()">Sí, eliminar todo</button>
@@ -588,12 +596,28 @@ html,body{height:100%;background:var(--bg);color:var(--fg);font-family:"Inter",s
 <script src="assets/js/api.js"></script>
 <script>
 let currentUser = null;
+let currentEmpresa = null;
 
 // ── Guard ────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   const user = API.guard();
   if (!user) return;
   currentUser = user;
+
+  // Cargar datos frescos del servidor
+  try {
+    const { token } = API.session.get();
+    const [userRes, empRes] = await Promise.allSettled([
+      fetch('http://localhost:8001/api/users/me', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
+      fetch('http://localhost:8001/api/empresa/mia', { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.ok ? r.json() : null),
+    ]);
+    if (userRes.status === 'fulfilled' && userRes.value) {
+      currentUser = userRes.value;
+      API.session.set(token, currentUser);
+    }
+    if (empRes.status === 'fulfilled') currentEmpresa = empRes.value;
+  } catch (_) {}
+
   loadUserData();
   document.getElementById('sessionTime').textContent =
     'Sesión activa · ' + new Date().toLocaleDateString('es-ES');
@@ -606,24 +630,23 @@ function loadUserData() {
   const fullName  = [currentUser.nombre, currentUser.apellido].filter(Boolean).join(' ');
 
   document.getElementById('avatarInitials').textContent = initials;
-  document.getElementById('avatarBig').style.background =
-    'linear-gradient(135deg, #6366f1, #8b5cf6)';
+  document.getElementById('avatarBig').style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
   document.getElementById('profileFullName').textContent = fullName || currentUser.email;
   document.getElementById('profileEmail').textContent = currentUser.email;
   const badge = document.getElementById('profilePlanBadge');
   badge.textContent = {free:'Gratuito',pro:'Pro',enterprise:'Enterprise'}[currentUser.plan] || currentUser.plan;
-  badge.className = 'plan-badge ' + (currentUser.plan === 'pro' || currentUser.plan === 'enterprise' ? (currentUser.plan === 'enterprise' ? 'enterprise' : 'pro') : 'free');
-  const initials2 = ((currentUser.nombre||'U')[0] + (currentUser.apellido||'U')[0]).toUpperCase();
-  document.getElementById('sidebarAvatar').textContent = initials2;
+  badge.className = 'plan-badge ' + (currentUser.plan === 'enterprise' ? 'enterprise' : currentUser.plan === 'pro' ? 'pro' : 'free');
+  document.getElementById('sidebarAvatar').textContent = initials;
   document.getElementById('sidebarName').textContent = currentUser.nombre || currentUser.email;
   document.getElementById('sidebarPlan').textContent =
-    {free:'Plan Gratuito',pro:'Plan Pro',enterprise:'Enterprise'}[currentUser.plan];
-  document.getElementById('inp-nombre').value   = currentUser.nombre;
-  document.getElementById('inp-apellido').value  = currentUser.apellido;
-  document.getElementById('inp-email').value     = currentUser.email;
-  document.getElementById('inp-empresa').value   = currentUser.empresa;
-  document.getElementById('inp-sector').value    = currentUser.sector || '';
-  document.getElementById('inp-empleados').value = currentUser.empleados || '';
+    {free:'Plan Gratuito',pro:'Plan Pro',enterprise:'Enterprise'}[currentUser.plan] || 'Plan Gratuito';
+  document.getElementById('inp-nombre').value   = currentUser.nombre   || '';
+  document.getElementById('inp-apellido').value  = currentUser.apellido || '';
+  document.getElementById('inp-email').value     = currentUser.email    || '';
+  // Datos de empresa (del endpoint /api/empresa/mia)
+  document.getElementById('inp-empresa').value   = currentEmpresa?.nombre   || '';
+  document.getElementById('inp-sector').value    = currentEmpresa?.sector    || '';
+  document.getElementById('inp-empleados').value = currentEmpresa?.empleados || '';
 }
 
 function markCurrentPlan() {
@@ -731,26 +754,85 @@ async function changePassword() {
 }
 
 // ── Danger zone ───────────────────────────────────────────────────────────
-function exportData() {
-  const data = JSON.stringify(currentUser, null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'bpa-mis-datos.json';
-  a.click();
-  toast('Exportación descargada', 'ok');
+async function exportData() {
+  try {
+    const { token } = API.session.get();
+    const [userRes, empRes, procRes, autosRes, kpisRes] = await Promise.allSettled([
+      fetch('http://localhost:8001/api/users/me',         { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+      fetch('http://localhost:8001/api/empresa/mia',      { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
+      fetch('http://localhost:8001/api/procesos',         { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
+      fetch('http://localhost:8001/api/automatizaciones', { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
+      fetch('http://localhost:8001/api/kpis',             { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
+    ]);
+    const dump = {
+      usuario:        userRes.status  === 'fulfilled' ? userRes.value  : null,
+      empresa:        empRes.status   === 'fulfilled' ? empRes.value   : null,
+      procesos:       procRes.status  === 'fulfilled' ? procRes.value  : [],
+      automatizaciones: autosRes.status === 'fulfilled' ? autosRes.value : [],
+      kpis:           kpisRes.status  === 'fulfilled' ? kpisRes.value  : [],
+      exportado_el:   new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `bpa-mis-datos-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Exportación descargada', 'ok');
+  } catch(e) {
+    toast('Error al exportar datos', 'err');
+  }
 }
 
-function deactivateAccount() {
-  closeModal('modal-desactivar');
-  toast('Cuenta desactivada', 'ok');
-  setTimeout(() => API.logout(), 1500);
+function openDeactivateModal() {
+  document.getElementById('modal-desactivar').classList.add('open');
+  document.getElementById('deactivate-pw').value = '';
 }
 
-function deleteAccount() {
-  closeModal('modal-eliminar');
-  API.session.clear();
-  setTimeout(() => { window.location.href = 'index.html'; }, 800);
+async function deactivateAccount() {
+  const pw = document.getElementById('deactivate-pw').value;
+  if (!pw) { toast('Introduce tu contraseña para confirmar', 'err'); return; }
+  try {
+    const { token } = API.session.get();
+    const r = await fetch('http://localhost:8001/api/users/me/deactivate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ password: pw }),
+      credentials: 'include',
+    });
+    if (!r.ok) { const e = await r.json().catch(()=>({})); toast(e.detail || 'Error', 'err'); return; }
+    closeModal('modal-desactivar');
+    toast('Cuenta desactivada. Cerrando sesión…', 'ok');
+    setTimeout(() => API.logout(), 1800);
+  } catch(e) { toast('No se pudo conectar con el servidor', 'err'); }
+}
+
+function openDeleteModal() {
+  document.getElementById('modal-eliminar').classList.add('open');
+  document.getElementById('delete-pw').value = '';
+}
+
+async function deleteAccount() {
+  const pw = document.getElementById('delete-pw').value;
+  if (!pw) { toast('Introduce tu contraseña para confirmar', 'err'); return; }
+  try {
+    const { token } = API.session.get();
+    const r = await fetch('http://localhost:8001/api/users/me', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ password: pw }),
+      credentials: 'include',
+    });
+    if (!r.ok && r.status !== 204) {
+      const e = await r.json().catch(()=>({}));
+      toast(e.detail || 'Contraseña incorrecta', 'err');
+      return;
+    }
+    API.session.clear();
+    closeModal('modal-eliminar');
+    toast('Cuenta eliminada permanentemente', 'ok');
+    setTimeout(() => { window.location.href = 'index.html'; }, 1500);
+  } catch(e) { toast('No se pudo conectar con el servidor', 'err'); }
 }
 
 // ── Modal ────────────────────────────────────────────────────────────────

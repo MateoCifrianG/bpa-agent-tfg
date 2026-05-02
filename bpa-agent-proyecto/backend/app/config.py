@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # Encryption (Fernet) — para credenciales MCP
     ENCRYPTION_KEY: str = ""
 
+    # Admin bootstrap
+    ADMIN_EMAIL: str = "admin@bpa.com"
+    ADMIN_PASSWORD: str = "Admin1234!"
+
     # CORS — en dev se permite cualquier localhost + acceso directo file://
     ALLOWED_ORIGINS: list[str] = [
         "http://localhost:3000",

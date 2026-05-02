@@ -151,6 +151,12 @@ async function loadHomeDashboard() {
     _kpis     = kpis.status     === 'fulfilled' ? kpis.value     : [];
     _empresa  = empresa.status  === 'fulfilled' ? empresa.value  : null;
 
+    // Exponer en window para acceso desde modales (body functions son closures del HTML)
+    window._procesos = _procesos;
+    window._autos    = _autos;
+    window._kpis     = _kpis;
+    window._empresa  = _empresa;
+
     // Badges de nav con datos reales (ocultar si 0)
     const convCount = convs.status === 'fulfilled' ? convs.value.length : 0;
     _updateNavBadge('badgeAgente', convCount);
@@ -205,8 +211,8 @@ function _updateWelcomeSummary() {
   } else {
     el.innerHTML = `Tienes <strong style="color:var(--fg)">${_procesos.length} proceso${_procesos.length!==1?'s':''}</strong> mapeado${_procesos.length!==1?'s':''} y <strong style="color:var(--fg)">${activasCnt} automatización${activasCnt!==1?'es activas':' activa'}</strong> generando valor.`;
   }
-  // Empresa nombre en el breadcrumb
-  const crumb = document.querySelector('.crumb-faded');
+  // Empresa nombre en el breadcrumb (usa ID para no sobreescribir otros .crumb-faded)
+  const crumb = document.getElementById('breadcrumbEmpresa') || document.querySelector('.crumb-faded');
   if (crumb && _empresa) crumb.textContent = _empresa.nombre;
 }
 
