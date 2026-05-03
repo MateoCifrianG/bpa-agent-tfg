@@ -39,7 +39,30 @@ const _session = {
 };
 
 // ── Helper fetch con manejo robusto de errores ───────────────────────────
-async function _apiFetch(path, options = {}) {
+let _refreshing = null; // singleton promise para evitar múltiples refresh simultáneos
+
+async function _tryRefresh() {
+  if (_refreshing) return _refreshing;
+  _refreshing = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) return false;
+      const data = await res.json().catch(() => null);
+      if (data?.access_token) {
+        _session.set(data.access_token, data.user || _session.get().user);
+        return true;
+      }
+      return false;
+    } catch { return false; }
+    finally { _refreshing = null; }
+  })();
+  return _refreshing;
+}
+
+async function _apiFetch(path, options = {}, _retry = false) {
   const { token } = _session.get();
   const headers = {
     'Content-Type': 'application/json',
@@ -61,6 +84,16 @@ async function _apiFetch(path, options = {}) {
       ok: false,
       error: 'No se pudo conectar con el servidor. ¿Está el backend corriendo en el puerto 8001?',
     };
+  }
+
+  // Token expirado → intentar refresh una sola vez
+  if (res.status === 401 && !_retry && path !== '/api/auth/refresh') {
+    const refreshed = await _tryRefresh();
+    if (refreshed) return _apiFetch(path, options, true);
+    // Refresh falló → redirigir a login
+    _session.clear();
+    window.location.href = 'login.html';
+    return { ok: false, error: 'Sesión expirada' };
   }
 
   if (!res.ok) {
