@@ -9,8 +9,9 @@ class KPI(Base):
 
     id:          Mapped[str]   = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     empresa_id:  Mapped[str]   = mapped_column(String(36), ForeignKey("empresas.id"), nullable=False, index=True)
+    proceso_id:  Mapped[str | None] = mapped_column(String(36), ForeignKey("procesos.id", ondelete="SET NULL"), nullable=True, index=True)
     nombre:      Mapped[str]   = mapped_column(String(255), nullable=False)
-    valor:       Mapped[str]   = mapped_column(String(100))   # string para soportar "2.1 días", "68%", etc.
+    valor:       Mapped[str]   = mapped_column(String(100))
     objetivo:    Mapped[str | None] = mapped_column(String(100))
     unidad:      Mapped[str | None] = mapped_column(String(50))
     tendencia:   Mapped[str]   = mapped_column(String(10), default="up")   # up | down | flat
@@ -19,3 +20,4 @@ class KPI(Base):
     updated_at:  Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
     empresa: Mapped["Empresa"] = relationship(back_populates="kpis")
+    proceso: Mapped["Proceso | None"] = relationship(foreign_keys=[proceso_id])

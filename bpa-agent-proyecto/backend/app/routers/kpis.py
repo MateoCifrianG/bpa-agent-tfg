@@ -1,5 +1,5 @@
 import re
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, field_validator
@@ -8,6 +8,7 @@ from datetime import datetime
 from app.database import get_db
 from app.models.kpi import KPI
 from app.models.empresa import Empresa
+from app.models.proceso import Proceso
 from app.models.user import User
 from app.auth.jwt import get_current_user
 
@@ -29,18 +30,21 @@ def _sanitize_str(v: str | None, max_len: int = 255) -> str | None:
 
 class KPIOut(BaseModel):
     id: str
+    proceso_id: Optional[str] = None
     nombre: str
     valor: str
     objetivo: Optional[str] = None
     unidad: Optional[str] = None
     tendencia: str
     categoria: Optional[str] = None
+    created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
 
 class KPICreate(BaseModel):
+    proceso_id: Optional[str] = None
     nombre: str
     valor: str
     objetivo: Optional[str] = None
@@ -55,6 +59,7 @@ class KPICreate(BaseModel):
 
 
 class KPIUpdate(BaseModel):
+    proceso_id: Optional[str] = None
     nombre: Optional[str] = None
     valor: Optional[str] = None
     objetivo: Optional[str] = None
@@ -78,14 +83,30 @@ async def _get_empresa_id(db: AsyncSession, user: User) -> str:
 
 @router.get("", response_model=list[KPIOut])
 async def list_kpis(
+    proceso_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     empresa_id = await _get_empresa_id(db, user)
-    result = await db.execute(
-        select(KPI).where(KPI.empresa_id == empresa_id).order_by(KPI.created_at.desc())
-    )
+    q = select(KPI).where(KPI.empresa_id == empresa_id)
+    if proceso_id is not None:
+        q = q.where(KPI.proceso_id == proceso_id)
+    result = await db.execute(q.order_by(KPI.created_at.desc()))
     return result.scalars().all()
+
+
+@router.get("/{kpi_id}", response_model=KPIOut)
+async def get_kpi(
+    kpi_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    empresa_id = await _get_empresa_id(db, user)
+    result = await db.execute(select(KPI).where(KPI.id == kpi_id, KPI.empresa_id == empresa_id))
+    kpi = result.scalar_one_or_none()
+    if not kpi:
+        raise HTTPException(status_code=404, detail="KPI no encontrado")
+    return kpi
 
 
 @router.post("", response_model=KPIOut, status_code=201)
@@ -95,6 +116,10 @@ async def create_kpi(
     user: User = Depends(get_current_user),
 ):
     empresa_id = await _get_empresa_id(db, user)
+    if body.proceso_id:
+        proc = await db.execute(select(Proceso).where(Proceso.id == body.proceso_id, Proceso.empresa_id == empresa_id))
+        if not proc.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="Proceso no pertenece a tu empresa")
     kpi = KPI(empresa_id=empresa_id, **body.model_dump())
     db.add(kpi)
     await db.commit()
@@ -110,13 +135,15 @@ async def update_kpi(
     user: User = Depends(get_current_user),
 ):
     empresa_id = await _get_empresa_id(db, user)
-    result = await db.execute(
-        select(KPI).where(KPI.id == kpi_id, KPI.empresa_id == empresa_id)
-    )
+    result = await db.execute(select(KPI).where(KPI.id == kpi_id, KPI.empresa_id == empresa_id))
     kpi = result.scalar_one_or_none()
     if not kpi:
         raise HTTPException(status_code=404, detail="KPI no encontrado")
-    for field, value in body.model_dump(exclude_none=True).items():
+    if body.proceso_id:
+        proc = await db.execute(select(Proceso).where(Proceso.id == body.proceso_id, Proceso.empresa_id == empresa_id))
+        if not proc.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="Proceso no pertenece a tu empresa")
+    for field, value in body.model_dump(exclude_unset=True).items():
         setattr(kpi, field, value)
     await db.commit()
     await db.refresh(kpi)
@@ -130,9 +157,7 @@ async def delete_kpi(
     user: User = Depends(get_current_user),
 ):
     empresa_id = await _get_empresa_id(db, user)
-    result = await db.execute(
-        select(KPI).where(KPI.id == kpi_id, KPI.empresa_id == empresa_id)
-    )
+    result = await db.execute(select(KPI).where(KPI.id == kpi_id, KPI.empresa_id == empresa_id))
     kpi = result.scalar_one_or_none()
     if not kpi:
         raise HTTPException(status_code=404, detail="KPI no encontrado")

@@ -1979,8 +1979,8 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
     <div class="full-page active" style="display:flex">
       <div class="page-header">
         <div>
-          <div class="page-header-title">KPIs</div>
-          <div class="page-header-sub">Indicadores clave de rendimiento de tu empresa</div>
+          <div class="page-header-title">KPIs por proceso</div>
+          <div class="page-header-sub">Indicadores de rendimiento organizados por proceso de negocio</div>
         </div>
         <button class="btn-cta" onclick="openKpiModal()" style="font-size:.78rem;padding:.45rem .9rem">
           <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round"><path d="M12 5v14M5 12h14"/></svg>
@@ -2525,8 +2525,23 @@ window._bpaUser = null;
   if (dateEl) dateEl.textContent = new Date().toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
   document.querySelectorAll('#welcomeEyebrow .dot').forEach(d => d.parentElement.firstChild.textContent = '');
 
-  // Cargar datos del dashboard home
-  loadHomeDashboard();
+  // Cargar datos del dashboard home y navegar según hash
+  loadHomeDashboard().then(() => {
+    const hashMap = {
+      agente:          ['Agente IA',        'page-agente'],
+      procesos:        ['Procesos',          'page-procesos'],
+      propuestas:      ['Propuestas IA',     'page-propuestas'],
+      automatizaciones:['Automatizaciones',  'page-automatizaciones'],
+      kpis:            ['KPIs',              'page-kpis'],
+    };
+    const hash = location.hash.replace('#', '');
+    if (hash && hashMap[hash]) {
+      const [title, pageId] = hashMap[hash];
+      const navEl = document.querySelector(`[data-page="${title}"]`);
+      setPage(navEl || null, title, pageId);
+      history.replaceState(null, '', location.pathname);
+    }
+  });
 })();
 
 // Re-conectar botones de tema tras mover el dropdown al body

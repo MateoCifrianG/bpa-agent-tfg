@@ -382,6 +382,12 @@
 
 <script src="assets/js/api.js"></script>
 <script>
+// Redirigir si ya hay sesión activa
+if (API.session.isAuth()) {
+  const { user } = API.session.get();
+  window.location.href = user?.role === 'admin' ? 'admin.html' : 'dashboard.html';
+}
+
 function togglePw(id, btn) {
   const input = document.getElementById(id);
   const isText = input.type === 'text';

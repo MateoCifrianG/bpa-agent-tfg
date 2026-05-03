@@ -277,14 +277,17 @@ function _buildSearchIndex() {
   ];
 }
 
+let _searchKbdListener = null;
 function initSearch() {
   const btn = document.querySelector('.topbar-search');
   if (!btn) return;
   btn.onclick = openSearch;
-  document.addEventListener('keydown', e => {
+  if (_searchKbdListener) document.removeEventListener('keydown', _searchKbdListener);
+  _searchKbdListener = e => {
     if ((e.metaKey||e.ctrlKey) && e.key==='k') { e.preventDefault(); openSearch(); }
     if (e.key==='Escape') closeSearch();
-  });
+  };
+  document.addEventListener('keydown', _searchKbdListener);
 }
 
 function openSearch() {
@@ -377,7 +380,7 @@ function _renderProcesos() {
         <td><div class="score-badge ${scoreClass(s)}">${s??'–'}</div></td>
         <td>${estadoPill(p.estado)}</td>
         <td><div style="display:flex;gap:.4rem">
-          <button class="icon-action" title="Editar" onclick='openProcesoModal(${JSON.stringify(p)})'>${ICONS.edit}</button>
+          <button class="icon-action" title="Editar" onclick='openProcesoModal(${JSON.stringify(p).replace(/'/g,"&#39;")})'>${ICONS.edit}</button>
           <button class="icon-action danger" title="Eliminar" onclick="deleteProceso('${p.id}','${esc(p.nombre)}')">${ICONS.trash}</button>
         </div></td>
       </tr>`;
@@ -565,7 +568,7 @@ async function deleteAuto(id, nombre) {
   } catch(e) { toast(e.message || 'Error al eliminar'); }
 }
 
-// ── KPIs ─────────────────────────────────────────────────────
+// ── KPIs por proceso ─────────────────────────────────────────
 async function loadKpis() {
   const el = document.getElementById('kpisList');
   if (!el) return;
@@ -577,36 +580,108 @@ async function loadKpis() {
   } catch(e) { el.innerHTML = `<div class="empty-state"><p>Error: ${esc(e.message)}</p></div>`; }
 }
 
-function _renderKpis() {
-  const el = document.getElementById('kpisList');
-  if (!el) return;
-  if (!_kpis.length) {
-    el.innerHTML = emptyState(ICONS.kpi, 'Sin KPIs', 'Añade indicadores de rendimiento para hacer seguimiento de la evolución de tu empresa.');
-    return;
-  }
+function _kpiCard(k) {
   const tendIcon = t => t==='up'?'↑':t==='down'?'↓':'→';
   const tendCol  = t => t==='up'?'var(--emerald)':t==='down'?'var(--rose)':'var(--amber)';
-  el.innerHTML = `<div class="cards-grid">${_kpis.map(k => `
-    <div class="card-item">
-      <div class="card-item-header">
-        <div>
-          <div class="card-item-title">${esc(k.nombre)}</div>
-          ${k.categoria?`<div class="card-item-sub">${esc(k.categoria)}</div>`:''}
-        </div>
-        <span style="font-size:1.4rem;font-weight:700;color:${tendCol(k.tendencia)}">${tendIcon(k.tendencia)}</span>
+  return `<div class="card-item">
+    <div class="card-item-header">
+      <div>
+        <div class="card-item-title">${esc(k.nombre)}</div>
+        ${k.categoria?`<div class="card-item-sub" style="text-transform:capitalize">${esc(k.categoria)}</div>`:''}
       </div>
-      <div style="font-size:1.6rem;font-weight:700;color:var(--fg);margin:.4rem 0">${esc(k.valor)}${k.unidad?`<span style="font-size:.85rem;font-weight:400;color:var(--fg-3);margin-left:.3rem">${esc(k.unidad)}</span>`:''}</div>
-      ${k.objetivo?`<div style="font-size:.72rem;color:var(--fg-3)">Objetivo: ${esc(k.objetivo)}</div>`:''}
-      <div class="card-item-actions">
-        <button class="icon-action" title="Editar" onclick='openKpiModal(${JSON.stringify(k)})'>${ICONS.edit}</button>
-        <button class="icon-action danger" title="Eliminar" onclick="deleteKpi('${k.id}','${esc(k.nombre)}')">${ICONS.trash}</button>
-      </div>
-    </div>`).join('')}
+      <span style="font-size:1.3rem;font-weight:700;color:${tendCol(k.tendencia)}" title="${k.tendencia==='up'?'Subiendo':k.tendencia==='down'?'Bajando':'Estable'}">${tendIcon(k.tendencia)}</span>
+    </div>
+    <div style="font-size:1.7rem;font-weight:700;color:var(--fg);margin:.5rem 0 .2rem">${esc(k.valor)}${k.unidad?`<span style="font-size:.82rem;font-weight:400;color:var(--fg-3);margin-left:.3rem">${esc(k.unidad)}</span>`:''}</div>
+    ${k.objetivo?`<div style="font-size:.72rem;color:var(--fg-3);margin-bottom:.3rem">Objetivo: <strong>${esc(k.objetivo)}${k.unidad?' '+esc(k.unidad):''}</strong></div>`:''}
+    <div class="card-item-actions">
+      <button class="icon-action" title="Editar" onclick='openKpiModal(${JSON.stringify(k).replace(/'/g,"&#39;")})'>${ICONS.edit}</button>
+      <button class="icon-action danger" title="Eliminar" onclick="deleteKpi('${k.id}','${esc(k.nombre)}')">${ICONS.trash}</button>
+    </div>
   </div>`;
 }
 
-function openKpiModal(data) {
+function _kpiGroup(title, subtitle, kpis, procesoId, scoreHtml) {
+  const empty = `<p style="font-size:.8rem;color:var(--fg-3);padding:.5rem 0">Sin KPIs aún. <a href="#" style="color:var(--accent)" onclick="openKpiModal(null,'${procesoId||''}');return false">Añadir primero</a></p>`;
+  return `<div style="margin-bottom:2rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.8rem">
+      <div>
+        <div style="font-size:.95rem;font-weight:600;color:var(--fg)">${esc(title)}</div>
+        ${subtitle?`<div style="font-size:.75rem;color:var(--fg-3)">${esc(subtitle)}</div>`:''}
+      </div>
+      <div style="display:flex;align-items:center;gap:.6rem">
+        ${scoreHtml||''}
+        <button class="btn-secondary" style="font-size:.72rem;padding:.3rem .7rem" onclick="openKpiModal(null,'${procesoId||''}')">
+          <svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;stroke-width:2.5;fill:none"><path d="M12 5v14M5 12h14"/></svg>
+          KPI
+        </button>
+      </div>
+    </div>
+    ${kpis.length ? `<div class="cards-grid">${kpis.map(_kpiCard).join('')}</div>` : empty}
+  </div>`;
+}
+
+function _renderKpis() {
+  const el = document.getElementById('kpisList');
+  if (!el) return;
+
+  // Actualizar contador en cabecera
+  const hdBtn = document.querySelector('#page-kpis .btn-cta');
+  if (hdBtn) hdBtn.style.display = _procesos.length ? 'none' : '';
+
+  const scoreClass = s => s==null?'':'score-badge '+(s>=70?'good':s>=40?'mid':'bad');
+  const scorePill  = p => p.score!=null
+    ? `<div class="${scoreClass(p.score)}" style="font-size:.72rem;padding:.2rem .5rem">${p.score}/100</div>`
+    : '';
+
+  // Agrupar por proceso
+  const byProceso = {};
+  _kpis.forEach(k => {
+    const pid = k.proceso_id || '__global__';
+    if (!byProceso[pid]) byProceso[pid] = [];
+    byProceso[pid].push(k);
+  });
+
+  let html = '';
+
+  // Un bloque por proceso (en orden de _procesos)
+  if (_procesos.length) {
+    _procesos.forEach(p => {
+      const kpis = byProceso[p.id] || [];
+      const frecLabel = p.frecuencia ? `${p.frecuencia} · ` : '';
+      const sub = `${frecLabel}${p.duracion_h ? p.duracion_h+' h/mes' : ''} · ${p.estado}`;
+      html += _kpiGroup(p.nombre, sub.replace(/^·\s*|·\s*$/g,'').trim(), kpis, p.id, scorePill(p));
+    });
+  }
+
+  // KPIs globales (sin proceso)
+  const globals = byProceso['__global__'] || [];
+  if (globals.length || !_procesos.length) {
+    html += _kpiGroup('KPIs globales de empresa', 'Indicadores no asociados a ningún proceso', globals, '', '');
+  }
+
+  if (!html) {
+    el.innerHTML = emptyState(ICONS.kpi, 'Sin KPIs', 'Crea tu primer proceso y añade KPIs para hacer seguimiento de la evolución de tu empresa.');
+    return;
+  }
+
+  // Estadísticas rápidas
+  const total = _kpis.length;
+  const ups   = _kpis.filter(k=>k.tendencia==='up').length;
+  const downs = _kpis.filter(k=>k.tendencia==='down').length;
+  const stats = `<div style="display:flex;gap:1.5rem;margin-bottom:1.5rem;flex-wrap:wrap">
+    <div style="font-size:.8rem;color:var(--fg-3)">${total} KPI${total!==1?'s':''} en total</div>
+    <div style="font-size:.8rem;color:var(--emerald)">↑ ${ups} subiendo</div>
+    <div style="font-size:.8rem;color:var(--rose)">↓ ${downs} bajando</div>
+    <div style="font-size:.8rem;color:var(--amber)">→ ${total-ups-downs} estables</div>
+  </div>`;
+  el.innerHTML = stats + html;
+}
+
+function openKpiModal(data, preselectedProcesoId) {
   const isEdit = data?.id;
+  const procesoOpts = _procesos.map(p =>
+    `<option value="${p.id}" ${(isEdit?data.proceso_id:preselectedProcesoId)===p.id?'selected':''}>${esc(p.nombre)}</option>`
+  ).join('');
   const body = `<div class="form-grid">
     <div class="field-group" style="grid-column:1/-1">
       <label class="field-label">Nombre del KPI *</label>
@@ -634,9 +709,16 @@ function openKpiModal(data) {
     <div class="field-group">
       <label class="field-label">Tendencia</label>
       <select class="field-select" id="kTend">
-        ${[['up','↑ Subiendo'],['down','↓ Bajando'],['flat','→ Estable']].map(([v,l])=>`<option value="${v}" ${isEdit&&data.tendencia===v?'selected':''}>${l}</option>`).join('')}
+        ${[['up','↑ Subiendo'],['down','↓ Bajando'],['flat','→ Estable']].map(([v,l])=>`<option value="${v}" ${(isEdit?data.tendencia:'up')===v?'selected':''}>${l}</option>`).join('')}
       </select>
     </div>
+    ${_procesos.length ? `<div class="field-group" style="grid-column:1/-1">
+      <label class="field-label">Proceso asociado</label>
+      <select class="field-select" id="kProceso">
+        <option value="">— Global (sin proceso) —</option>
+        ${procesoOpts}
+      </select>
+    </div>` : ''}
   </div>`;
   const foot = `<button class="btn-secondary" onclick="closeModal()">Cancelar</button>
     <button class="btn-cta" onclick="saveKpi(${isEdit?`'${data.id}'`:'null'})">${isEdit?'Guardar cambios':'Crear KPI'}</button>`;
@@ -648,30 +730,31 @@ async function saveKpi(id) {
   try {
     const nombre = sanitize(document.getElementById('kNombre')?.value || '', 255);
     const valor  = sanitize(document.getElementById('kValor')?.value  || '', 100);
-    if (!nombre || !valor) { toast('Nombre y valor son obligatorios'); return; }
+    if (!nombre || !valor) { toast('Nombre y valor son obligatorios', 'err'); return; }
     const payload = {
       nombre, valor,
-      unidad:    sanitize(document.getElementById('kUnidad')?.value || '', 50)  || null,
-      objetivo:  sanitize(document.getElementById('kObj')?.value    || '', 100) || null,
-      categoria: document.getElementById('kCat')?.value  || null,
-      tendencia: document.getElementById('kTend')?.value || 'flat',
+      unidad:     sanitize(document.getElementById('kUnidad')?.value || '', 50)  || null,
+      objetivo:   sanitize(document.getElementById('kObj')?.value    || '', 100) || null,
+      categoria:  document.getElementById('kCat')?.value    || null,
+      tendencia:  document.getElementById('kTend')?.value   || 'up',
+      proceso_id: document.getElementById('kProceso')?.value || null,
     };
-    if (id) { await BPA.put(`/api/kpis/${id}`, payload); toast('KPI actualizado'); }
-    else     { await BPA.post('/api/kpis', payload);      toast('KPI creado'); }
+    if (id) { await BPA.put(`/api/kpis/${id}`, payload); toast('KPI actualizado', 'ok'); }
+    else     { await BPA.post('/api/kpis', payload);      toast('KPI creado', 'ok'); }
     closeModal();
     await loadKpis();
     await loadHomeDashboard();
-  } catch(e) { toast(e.message || 'Error al guardar'); }
+  } catch(e) { toast(e.message || 'Error al guardar', 'err'); }
 }
 
 async function deleteKpi(id, nombre) {
   if (!confirm(`¿Eliminar el KPI "${nombre}"?`)) return;
   try {
     await BPA.del(`/api/kpis/${id}`);
-    toast('KPI eliminado');
+    toast('KPI eliminado', 'ok');
     await loadKpis();
     await loadHomeDashboard();
-  } catch(e) { toast(e.message || 'Error al eliminar'); }
+  } catch(e) { toast(e.message || 'Error al eliminar', 'err'); }
 }
 
 // ── PROPUESTAS ────────────────────────────────────────────────
@@ -725,6 +808,7 @@ async function _loadConversacionHistorial(convId) {
     container.innerHTML = '';
     const user = API.session.get().user;
     const userInitials = user ? ((user.nombre||'U')[0]+(user.apellido||'U')[0]).toUpperCase() : 'U';
+    if (!Array.isArray(msgs)) return;
     msgs.forEach(m => appendMsg(container, m.role==='user'?'user':'agent', m.role==='user'?userInitials:'__logo__', m.content));
     container.scrollTop = container.scrollHeight;
     _chatHistorial = msgs;
@@ -742,11 +826,11 @@ async function deleteConversacion(id) {
 
 // ── AGENTE IA CHAT ────────────────────────────────────────────
 async function initAgentePage() {
-  // Si hay conversación activa, cargarla
-  if (_conversacionId) {
-    await _loadConversacionHistorial(_conversacionId);
-  }
-  // Focus input
+  try {
+    if (_conversacionId) {
+      await _loadConversacionHistorial(_conversacionId);
+    }
+  } catch(e) { console.warn('Error cargando historial de chat:', e); }
   setTimeout(() => document.getElementById('chatInput')?.focus(), 100);
 }
 

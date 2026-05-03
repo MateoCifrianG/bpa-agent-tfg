@@ -38,6 +38,7 @@ class ProcesoOut(BaseModel):
     estado: str
     notas: Optional[str] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -103,6 +104,22 @@ async def _get_empresa_id(db: AsyncSession, user: User) -> str:
     if not empresa:
         raise HTTPException(status_code=404, detail="No tienes empresa registrada")
     return empresa.id
+
+
+@router.get("/{proceso_id}", response_model=ProcesoOut)
+async def get_proceso(
+    proceso_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    empresa_id = await _get_empresa_id(db, user)
+    result = await db.execute(
+        select(Proceso).where(Proceso.id == proceso_id, Proceso.empresa_id == empresa_id)
+    )
+    proceso = result.scalar_one_or_none()
+    if not proceso:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    return proceso
 
 
 @router.get("", response_model=list[ProcesoOut])

@@ -9,7 +9,7 @@ from app.database import create_tables
 from app.routers import auth, credenciales, empresas, procesos, kpis, automatizaciones, agente, users, admin
 from app.middleware.rate_limit import RateLimitMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from app.database import AsyncSessionLocal
 
 MAX_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
@@ -72,9 +72,24 @@ async def _bootstrap_admin():
         await db.commit()
 
 
+async def _migrate_db():
+    """Apply incremental schema changes to existing DB without losing data."""
+    async with AsyncSessionLocal() as db:
+        migrations = [
+            "ALTER TABLE kpis ADD COLUMN proceso_id VARCHAR(36) REFERENCES procesos(id) ON DELETE SET NULL",
+        ]
+        for sql in migrations:
+            try:
+                await db.execute(text(sql))
+                await db.commit()
+            except Exception:
+                await db.rollback()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
+    await _migrate_db()
     await _bootstrap_admin()
     yield
 
