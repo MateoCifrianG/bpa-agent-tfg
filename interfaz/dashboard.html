@@ -1061,7 +1061,11 @@ html, body { height: 100%; background: var(--bg); color: var(--fg); font-family:
   backdrop-filter: blur(20px);
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.toast.ok   { border-color: #10b981; background: rgba(16,185,129,.12); }
+.toast.err  { border-color: #ef4444; background: rgba(239,68,68,.12); }
 .toast-icon { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; flex-shrink: 0; color: #0a0a0f; font-size: .65rem; font-weight: 800; }
+.toast.ok .toast-icon  { background: #10b981; }
+.toast.err .toast-icon { background: #ef4444; }
 
 /* ── Fade-in animations ───────────────────────────────────── */
 .fade-up {
@@ -1835,7 +1839,7 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
           <button class="panel-action" onclick="setPage(document.querySelector('[data-page=&quot;Agente IA&quot;]'),'Agente IA','page-agente')">Abrir chat →</button>
         </div>
         <div class="chat-messages" id="homeChatMessages">
-          <div class="msg agent"><div class="msg-avatar">B</div>
+          <div class="msg agent"><div class="msg-avatar"><img src="assets/img/logo-agente.png" alt="BPA" onerror="this.parentElement.textContent='B'" style="width:100%;height:100%;object-fit:contain;border-radius:50%"></div>
             <div class="msg-bubble">¡Hola! Soy BPA-Agent. Cuéntame sobre tus procesos de negocio y te ayudaré a optimizarlos con automatizaciones.<span class="cursor"></span></div>
           </div>
         </div>
@@ -2100,11 +2104,11 @@ function goTo(label) {
 const toastEl = document.getElementById('toast');
 const toastMsg = document.getElementById('toastMsg');
 let toastTimer;
-function toast(msg) {
+function toast(msg, type) {
   toastMsg.textContent = msg;
-  toastEl.classList.add('show');
+  toastEl.className = 'toast show' + (type === 'err' ? ' err' : type === 'ok' ? ' ok' : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2400);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2800);
 }
 
 // ── Theme ──

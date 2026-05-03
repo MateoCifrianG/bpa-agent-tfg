@@ -9,7 +9,7 @@ class Automatizacion(Base):
 
     id:           Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     empresa_id:   Mapped[str] = mapped_column(String(36), ForeignKey("empresas.id"), nullable=False, index=True)
-    proceso_id:   Mapped[str | None] = mapped_column(String(36), ForeignKey("procesos.id"))
+    proceso_id:   Mapped[str | None] = mapped_column(String(36), ForeignKey("procesos.id", ondelete="SET NULL"))
     nombre:       Mapped[str] = mapped_column(String(255), nullable=False)
     descripcion:  Mapped[str | None] = mapped_column(Text)
     herramienta:  Mapped[str | None] = mapped_column(String(100))   # n8n, Gmail, Drive, etc.

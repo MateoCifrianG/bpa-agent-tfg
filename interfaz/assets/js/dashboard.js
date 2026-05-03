@@ -725,7 +725,7 @@ async function _loadConversacionHistorial(convId) {
     container.innerHTML = '';
     const user = API.session.get().user;
     const userInitials = user ? ((user.nombre||'U')[0]+(user.apellido||'U')[0]).toUpperCase() : 'U';
-    msgs.forEach(m => appendMsg(container, m.role==='user'?'user':'agent', m.role==='user'?userInitials:'B', m.content));
+    msgs.forEach(m => appendMsg(container, m.role==='user'?'user':'agent', m.role==='user'?userInitials:'__logo__', m.content));
     container.scrollTop = container.scrollHeight;
     _chatHistorial = msgs;
   } catch(e) { console.error('Error cargando historial:', e); }
@@ -755,7 +755,7 @@ function nuevaConversacion() {
   _chatHistorial  = [];
   const msgs = document.getElementById('chatMessages');
   if (msgs) msgs.innerHTML = `<div class="msg-full agent">
-    <div class="msg-avatar">B</div>
+    <div class="msg-avatar"><img src="assets/img/logo-agente.png" alt="BPA" onerror="this.parentElement.textContent='B'"></div>
     <div class="msg-bubble"><div class="msg-text">¡Nueva conversación! ¿Qué quieres hacer?<br><br>
     <strong>Crear:</strong><br>
     • <a href="#" style="color:var(--accent);text-decoration:none" onclick="setMsgInput('Crea un proceso de ');return false">Crear un proceso</a><br>

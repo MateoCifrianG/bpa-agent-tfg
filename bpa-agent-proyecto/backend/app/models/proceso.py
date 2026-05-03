@@ -21,4 +21,4 @@ class Proceso(Base):
     updated_at:  Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
     empresa:         Mapped["Empresa"]          = relationship(back_populates="procesos")
-    automatizaciones: Mapped[list["Automatizacion"]] = relationship(back_populates="proceso")
+    automatizaciones: Mapped[list["Automatizacion"]] = relationship(back_populates="proceso", passive_deletes=True)

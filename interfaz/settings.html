@@ -695,6 +695,7 @@ async function savePerfil() {
       const user = await r.json();
       API.session.set(token, user);
       currentUser = user;
+      await saveEmpresa(true);
       toast('Perfil actualizado correctamente', 'ok');
       loadUserData();
     } else {
@@ -709,11 +710,11 @@ async function savePerfil() {
 }
 
 // ── Save empresa (API real) ───────────────────────────────────────────────
-async function saveEmpresa() {
+async function saveEmpresa(silent = false) {
   const nombre   = document.getElementById('inp-empresa')?.value.trim();
   const sector   = document.getElementById('inp-sector')?.value.trim();
   const empleados = parseInt(document.getElementById('inp-empleados')?.value) || null;
-  if (!nombre) return toast('El nombre de empresa es obligatorio', 'err');
+  if (!nombre) { if (!silent) toast('El nombre de empresa es obligatorio', 'err'); return; }
 
   try {
     const { token } = API.session.get();
@@ -722,7 +723,7 @@ async function saveEmpresa() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ nombre, sector: sector || null, empleados }),
     });
-    if (r.ok) { toast('Empresa actualizada correctamente', 'ok'); }
+    if (r.ok) { if (!silent) toast('Empresa actualizada correctamente', 'ok'); }
     else { const err = await r.json().catch(()=>({})); toast(err.detail || 'Error al guardar', 'err'); }
   } catch(e) { toast('No se pudo conectar con el servidor', 'err'); }
 }
