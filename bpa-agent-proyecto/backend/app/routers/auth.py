@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from pydantic import BaseModel
+from typing import Optional
 from app.database import get_db
 from app.models.user import User
 from app.models.empresa import Empresa
@@ -15,7 +17,19 @@ from app.config import settings
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-@router.post("/login", response_model=TokenResponse)
+class RefreshBody(BaseModel):
+    refresh_token: Optional[str] = None
+
+
+def _set_refresh_cookie(response: Response, token: str):
+    response.set_cookie(
+        key="refresh_token", value=token,
+        httponly=True, secure=False, samesite="lax",
+        max_age=60 * 60 * 24 * settings.REFRESH_TOKEN_EXPIRE_DAYS,
+    )
+
+
+@router.post("/login")
 async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email.lower()))
     user = result.scalar_one_or_none()
@@ -27,15 +41,16 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
     access_token  = create_access_token({"sub": user.id, "role": user.role})
     refresh_token = create_refresh_token({"sub": user.id})
 
-    response.set_cookie(
-        key="refresh_token", value=refresh_token,
-        httponly=True, secure=False, samesite="lax",
-        max_age=60 * 60 * 24 * settings.REFRESH_TOKEN_EXPIRE_DAYS,
-    )
-    return TokenResponse(access_token=access_token, user=UserOut.model_validate(user))
+    _set_refresh_cookie(response, refresh_token)
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": UserOut.model_validate(user).model_dump(),
+    }
 
 
-@router.post("/register", response_model=TokenResponse, status_code=201)
+@router.post("/register", status_code=201)
 async def register(body: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.email == body.email.lower()))
     if existing.scalar_one_or_none():
@@ -63,12 +78,13 @@ async def register(body: RegisterRequest, response: Response, db: AsyncSession =
 
     access_token  = create_access_token({"sub": user.id, "role": user.role})
     refresh_token = create_refresh_token({"sub": user.id})
-    response.set_cookie(
-        key="refresh_token", value=refresh_token,
-        httponly=True, secure=False, samesite="lax",
-        max_age=60 * 60 * 24 * settings.REFRESH_TOKEN_EXPIRE_DAYS,
-    )
-    return TokenResponse(access_token=access_token, user=UserOut.model_validate(user))
+    _set_refresh_cookie(response, refresh_token)
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": UserOut.model_validate(user).model_dump(),
+    }
 
 
 @router.get("/me", response_model=UserOut)
@@ -77,8 +93,8 @@ async def me(user: User = Depends(get_current_user)):
 
 
 @router.post("/refresh")
-async def refresh_token(request: Request, db: AsyncSession = Depends(get_db)):
-    token = request.cookies.get("refresh_token")
+async def refresh_token(request: Request, body: RefreshBody = RefreshBody(), db: AsyncSession = Depends(get_db)):
+    token = request.cookies.get("refresh_token") or (body.refresh_token if body else None)
     if not token:
         raise HTTPException(status_code=401, detail="No hay refresh token")
     payload = decode_token(token)

@@ -10,27 +10,31 @@ const _session = {
   accessToken: null,
   user: null,
 
-  set(token, user) {
+  set(token, user, refreshToken) {
     this.accessToken = token;
     this.user = user;
     sessionStorage.setItem('bpa_token', token);
     sessionStorage.setItem('bpa_user', JSON.stringify(user));
+    if (refreshToken) sessionStorage.setItem('bpa_refresh', refreshToken);
   },
 
   get() {
     if (!this.accessToken) {
       this.accessToken = sessionStorage.getItem('bpa_token');
       const raw = sessionStorage.getItem('bpa_user');
-      this.user = raw ? JSON.parse(raw) : null;
+      try { this.user = raw ? JSON.parse(raw) : null; } catch { this.user = null; }
     }
     return { token: this.accessToken, user: this.user };
   },
+
+  getRefresh() { return sessionStorage.getItem('bpa_refresh'); },
 
   clear() {
     this.accessToken = null;
     this.user = null;
     sessionStorage.removeItem('bpa_token');
     sessionStorage.removeItem('bpa_user');
+    sessionStorage.removeItem('bpa_refresh');
   },
 
   isAuth() {
@@ -45,14 +49,18 @@ async function _tryRefresh() {
   if (_refreshing) return _refreshing;
   _refreshing = (async () => {
     try {
+      const storedRefresh = _session.getRefresh();
       const res = await fetch(`${API_BASE}/api/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        // enviar también por body para que funcione desde file://
+        body: storedRefresh ? JSON.stringify({ refresh_token: storedRefresh }) : '{}',
       });
       if (!res.ok) return false;
       const data = await res.json().catch(() => null);
       if (data?.access_token) {
-        _session.set(data.access_token, data.user || _session.get().user);
+        _session.set(data.access_token, data.user || _session.get().user, storedRefresh);
         return true;
       }
       return false;
@@ -113,8 +121,8 @@ const API = {
       body: JSON.stringify({ email, password }),
     });
     if (!result.ok) return result;
-    const { access_token, user } = result.data;
-    _session.set(access_token, user);
+    const { access_token, refresh_token, user } = result.data;
+    _session.set(access_token, user, refresh_token);
     return { ok: true, user, role: user.role };
   },
 
@@ -124,7 +132,7 @@ const API = {
       body: JSON.stringify({
         nombre:    nombre    || '',
         apellido:  apellido  || '',
-        empresa:   empresa   || '',   // campo correcto del schema
+        empresa:   empresa   || '',
         email,
         password,
         plan:      plan      || 'free',
@@ -133,8 +141,8 @@ const API = {
       }),
     });
     if (!result.ok) return result;
-    const { access_token, user } = result.data;
-    _session.set(access_token, user);
+    const { access_token, refresh_token, user } = result.data;
+    _session.set(access_token, user, refresh_token);
     return { ok: true, user, role: user.role };
   },
 
