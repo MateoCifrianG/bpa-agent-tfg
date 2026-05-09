@@ -187,3 +187,33 @@ const API = {
     return user;
   },
 };
+
+// ── BPA: helper de alto nivel para llamadas autenticadas ──────────────────
+// Lanza excepción en error (útil para async/await con try/catch en UI)
+const BPA = {
+  async get(path) {
+    const r = await _apiFetch(path, { method: 'GET' });
+    if (!r.ok) throw new Error(r.error);
+    return r.data;
+  },
+  async post(path, body) {
+    const r = await _apiFetch(path, { method: 'POST', body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(r.error);
+    return r.data;
+  },
+  async put(path, body) {
+    const r = await _apiFetch(path, { method: 'PUT', body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(r.error);
+    return r.data;
+  },
+  async patch(path, body) {
+    const r = await _apiFetch(path, { method: 'PATCH', body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(r.error);
+    return r.data;
+  },
+  async del(path) {
+    const r = await _apiFetch(path, { method: 'DELETE' });
+    if (!r.ok) throw new Error(r.error);
+    return r.data;
+  },
+};

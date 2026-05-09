@@ -2952,26 +2952,19 @@ const MODALS = {
   integrations: {
     title: 'Integraciones',
     body: () => `
-      <div class="integ-grid">
-        ${[
-          ['Gmail','#ea4335','GM',true],
-          ['Drive','#1a73e8','DR',true],
-          ['Sheets','#0f9d58','SH',true],
-          ['Slack','#4a154b','SL',false],
-          ['Notion','#000','NT',false],
-          ['n8n','#ea4b71','N8',true],
-          ['HubSpot','#ff7a59','HS',false],
-          ['Stripe','#635bff','ST',false],
-        ].map(([n,c,i,on]) => `
-          <div class="integ-row">
-            <div class="integ-icon" style="background:${c}">${i}</div>
-            <div class="integ-info"><div class="integ-name">${n}</div><div class="integ-status ${on?'connected':''}">${on?'Conectado':'No conectado'}</div></div>
-            <button class="integ-btn ${on?'connected':''}" onclick="toast('${on?'Desconectado':'Conectado'} ${n}')">${on?'✓':'+ Conectar'}</button>
-          </div>
-        `).join('')}
+      <div id="integ-loading" style="text-align:center;padding:2rem;color:var(--text-muted)">Cargando integraciones…</div>
+      <div id="integ-grid" class="integ-grid" style="display:none"></div>
+      <div id="integ-form" style="display:none;margin-top:1rem;padding:1rem;background:var(--bg-card);border-radius:10px;border:1px solid var(--border)">
+        <div class="modal-section-title" id="integ-form-title">Configurar integración</div>
+        <div id="integ-form-fields"></div>
+        <div style="display:flex;gap:.5rem;margin-top:1rem">
+          <button class="btn-modal primary" onclick="saveIntegCredential()">Guardar</button>
+          <button class="btn-modal" onclick="document.getElementById('integ-form').style.display='none'">Cancelar</button>
+        </div>
       </div>
     `,
-    foot: `<button class="btn-modal" onclick="closeModal()">Cerrar</button>`
+    foot: `<button class="btn-modal" onclick="closeModal()">Cerrar</button>`,
+    onOpen: () => loadIntegraciones()
   },
   api: {
     title: 'API y webhooks',
@@ -3034,6 +3027,7 @@ function openModal(key) {
   modalBody.innerHTML = typeof m.body === 'function' ? m.body() : m.body;
   modalFoot.innerHTML = m.foot || '';
   modalBackdrop.classList.add('show');
+  if (typeof m.onOpen === 'function') setTimeout(m.onOpen, 50);
 }
 function closeModal() {
   modalBackdrop.classList.remove('show');
@@ -3150,6 +3144,96 @@ if (homeChatInputEl) {
 <script>
 // Variable global del usuario autenticado (accesible desde modales)
 window._bpaUser = null;
+
+// ── Integraciones ────────────────────────────────────────────────────
+const _INTEG_META = {
+  google:   { label: 'Google (Gmail + Calendar)', color: '#ea4335', icon: 'G',  tipo: 'oauth2',  desc: 'Envía emails y crea eventos con tu cuenta Google' },
+  n8n:      { label: 'n8n',                        color: '#ea4b71', icon: 'N8', tipo: 'api_key', desc: 'Automatización open-source con 400+ apps', fields: [{id:'n8n_api_key',label:'API Key de n8n'},{id:'n8n_url',label:'URL de n8n',placeholder:'http://localhost:5678'}] },
+  notion:   { label: 'Notion',                     color: '#1a1a1a', icon: 'NT', tipo: 'api_key', desc: 'Crea páginas y bases de datos en Notion',  fields: [{id:'notion_token',label:'Token de integración Notion'}] },
+  telegram: { label: 'Telegram Bot',               color: '#0088cc', icon: 'TG', tipo: 'api_key', desc: 'Envía alertas y mensajes por Telegram',    fields: [{id:'telegram_bot_token',label:'Token del bot (de @BotFather)'},{id:'telegram_chat_id',label:'Chat ID destino'}] },
+  slack:    { label: 'Slack',                       color: '#4a154b', icon: 'SL', tipo: 'webhook', desc: 'Notificaciones en canales de Slack',       fields: [{id:'slack_webhook',label:'Incoming Webhook URL de Slack'}] },
+};
+
+let _integData = [];
+
+async function loadIntegraciones() {
+  const grid = document.getElementById('integ-grid');
+  const loading = document.getElementById('integ-loading');
+  if (!grid) return;
+  try {
+    const data = await BPA.get('/api/integraciones');
+    _integData = data.integraciones || [];
+    loading.style.display = 'none';
+    grid.style.display = 'flex';
+    grid.style.flexDirection = 'column';
+    grid.style.gap = '.5rem';
+    grid.innerHTML = _integData.map(integ => {
+      const meta = _INTEG_META[integ.id] || {};
+      const color = meta.color || '#666';
+      const icon  = meta.icon  || integ.id.slice(0,2).toUpperCase();
+      const conn  = integ.conectado;
+      return `
+        <div class="integ-row" style="align-items:center">
+          <div class="integ-icon" style="background:${color};width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;color:#fff;flex-shrink:0">${icon}</div>
+          <div class="integ-info" style="flex:1;min-width:0;margin:0 .75rem">
+            <div class="integ-name" style="font-weight:600;font-size:.9rem">${integ.nombre}</div>
+            <div class="integ-status ${conn ? 'connected' : ''}" style="font-size:.78rem;color:${conn ? '#22c55e' : 'var(--text-muted)'}">${conn ? '✓ Conectado' : integ.descripcion}</div>
+          </div>
+          ${conn
+            ? `<button class="integ-btn connected" onclick="desconectarInteg('${integ.id}')" style="font-size:.75rem;padding:.3rem .7rem;border-radius:6px;border:1px solid #ef4444;background:transparent;color:#ef4444;cursor:pointer">Desconectar</button>`
+            : integ.tipo === 'oauth2'
+              ? `<a href="http://localhost:8002${integ.oauth_url || '/api/integraciones/oauth/google'}" class="integ-btn" style="font-size:.75rem;padding:.3rem .7rem;border-radius:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;text-decoration:none">+ OAuth</a>`
+              : `<button class="integ-btn" onclick="mostrarFormInteg('${integ.id}')" style="font-size:.75rem;padding:.3rem .7rem;border-radius:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer">+ Conectar</button>`
+          }
+        </div>`;
+    }).join('');
+  } catch(e) {
+    loading.textContent = 'No se pudo cargar. ¿El backend está activo?';
+  }
+}
+
+function mostrarFormInteg(id) {
+  const meta = _INTEG_META[id];
+  if (!meta || !meta.fields) return toast('Configuración no disponible');
+  const form = document.getElementById('integ-form');
+  document.getElementById('integ-form-title').textContent = `Configurar ${meta.label}`;
+  document.getElementById('integ-form-fields').innerHTML = meta.fields.map(f => `
+    <div style="margin-top:.75rem">
+      <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:.3rem">${f.label}</label>
+      <input id="integ-field-${f.id}" class="field-input" placeholder="${f.placeholder || f.label}" style="width:100%;background:var(--bg-input,var(--bg));border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;color:var(--text);font-size:.9rem"/>
+    </div>`).join('');
+  form.setAttribute('data-integ-id', id);
+  form.style.display = 'block';
+}
+
+async function saveIntegCredential() {
+  const form = document.getElementById('integ-form');
+  const id   = form.getAttribute('data-integ-id');
+  const meta = _INTEG_META[id];
+  if (!meta) return;
+  for (const f of meta.fields) {
+    const val = document.getElementById(`integ-field-${f.id}`)?.value?.trim();
+    if (!val) { toast(`El campo "${f.label}" es obligatorio`); return; }
+    try {
+      await BPA.post('/api/integraciones/credencial', { servicio: f.id, valor: val });
+    } catch(e) {
+      toast('Error guardando ' + f.label); return;
+    }
+  }
+  toast(`${meta.label} configurado correctamente`);
+  form.style.display = 'none';
+  loadIntegraciones();
+}
+
+async function desconectarInteg(id) {
+  const servMap = { google: 'google_tokens', n8n: 'n8n_api_key', notion: 'notion_token', telegram: 'telegram_bot_token', slack: 'slack_webhook' };
+  const serv = servMap[id] || id;
+  try {
+    await BPA.del(`/api/integraciones/${serv}`);
+    toast(`${id} desconectado`);
+    loadIntegraciones();
+  } catch(e) { toast('Error al desconectar'); }
+}
 
 // ── Connectivity banner ─────────────────────────────────────────────
 let _dashBackendOnline = true;
