@@ -24,6 +24,7 @@ from app.models.empresa import Empresa
 from app.models.user import User
 from app.agents import motor_v4
 from app.agents import motor_v5
+from app.agents import motor_v6
 
 log = logging.getLogger(__name__)
 
@@ -120,29 +121,18 @@ async def chat(
     accion  = None
     entidad = None
 
-    # ── Motor selection: v5 (Ollama LLM) → v4 (NLP fallback) ─────────────
+    # ── Motor selection: v6 (motor propio) → v5 (Ollama) → v4 (NLP) ────────
     respuesta_texto = ""
-    if settings.ANTHROPIC_API_KEY:
-        # Ruta legacy: API de Anthropic (si el admin la configuró)
-        try:
-            import anthropic
-            from app.agents.safety import limpiar_input, REGLA_ANTI_CREDENCIALES
-            from app.agents.prompts.analisis import SYSTEM_ANALISIS
-            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-            msg_limpio = limpiar_input(body.mensaje)
-            with client.messages.stream(
-                model="claude-3-5-haiku-20241022",
-                max_tokens=1024,
-                system=SYSTEM_ANALISIS + "\n\n" + REGLA_ANTI_CREDENCIALES,
-                messages=[{"role": m["role"], "content": m["content"]} for m in historial],
-            ) as stream:
-                for text in stream.text_stream:
-                    respuesta_texto += text
-        except Exception as exc:
-            log.warning("Anthropic falló (%s) — usando motor_v5/v4", exc)
 
-    if not respuesta_texto:
-        # Motor v5: agente LLM local (Ollama) — razonamiento completo + tool use
+    # Motor v6: motor razonador propio con KB sectorial (primera opción siempre)
+    try:
+        result_d = await motor_v6.responder(body.mensaje, empresa, db, historial)
+        respuesta_texto = result_d["respuesta"]
+        accion  = result_d.get("accion")
+        entidad = result_d.get("entidad")
+    except Exception as exc_v6:
+        log.warning("motor_v6 falló (%s) — degradando a motor_v5", exc_v6)
+        # Fallback v5: Ollama LLM local
         try:
             result_d = await motor_v5.responder(body.mensaje, empresa, db, historial)
             respuesta_texto = result_d["respuesta"]
@@ -150,7 +140,7 @@ async def chat(
             entidad = result_d.get("entidad")
         except Exception as exc_v5:
             log.warning("motor_v5 falló (%s) — degradando a motor_v4", exc_v5)
-            # Fallback: motor v4 (pipeline NLP, siempre disponible)
+            # Fallback v4: pipeline NLP puro, siempre disponible
             try:
                 result_d = await motor_v4.responder(body.mensaje, empresa, db, historial)
                 respuesta_texto = result_d["respuesta"]
@@ -158,7 +148,7 @@ async def chat(
                 entidad = result_d.get("entidad")
             except Exception as exc_v4:
                 log.error("motor_v4 también falló: %s", exc_v4)
-                respuesta_texto = "Lo siento, el motor de IA no está disponible en este momento. Por favor, inténtalo de nuevo."
+                respuesta_texto = "Lo siento, el motor de IA no está disponible en este momento."
 
     historial.append({"role": "assistant", "content": respuesta_texto})
     conv.historial = json.dumps(historial, ensure_ascii=False)
