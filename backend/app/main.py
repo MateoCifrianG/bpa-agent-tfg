@@ -2,6 +2,7 @@ import time
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -176,6 +177,24 @@ else:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = [
+        {"field": " → ".join(str(l) for l in e["loc"][1:]), "msg": e["msg"]}
+        for e in exc.errors()
+    ]
+    logger.warning("Validación fallida %s %s", request.method, request.url.path,
+                   extra={"errors": errors})
+    return JSONResponse(status_code=422, content={"detail": "Datos inválidos", "errors": errors})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error("Error no controlado %s %s: %s", request.method, request.url.path, exc,
+                 exc_info=True)
+    return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
+
 
 app.include_router(auth.router)
 app.include_router(users.router)

@@ -1,3 +1,4 @@
+import logging
 from pydantic_settings import BaseSettings
 from pathlib import Path
 
@@ -58,3 +59,15 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Auto-generate a Fernet key for dev if not configured.
+# In production, set ENCRYPTION_KEY in the environment / .env file.
+if not settings.ENCRYPTION_KEY:
+    from cryptography.fernet import Fernet
+    _generated = Fernet.generate_key().decode()
+    settings.ENCRYPTION_KEY = _generated
+    logging.getLogger("bpa.config").warning(
+        "ENCRYPTION_KEY no configurada — usando clave efímera generada automáticamente. "
+        "Las credenciales cifradas NO persisten entre reinicios. "
+        "Define ENCRYPTION_KEY en .env para producción."
+    )

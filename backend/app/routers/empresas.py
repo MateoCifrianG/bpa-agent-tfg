@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from app.database import get_db
 from app.models.empresa import Empresa
@@ -10,6 +10,7 @@ from app.models.kpi import KPI
 from app.models.automatizacion import Automatizacion
 from app.models.user import User
 from app.auth.jwt import get_current_user
+from app.security.sanitize import limpiar_nombre
 
 router = APIRouter(prefix="/api/empresa", tags=["empresa"])
 
@@ -31,6 +32,16 @@ class EmpresaUpdate(BaseModel):
     empleados: Optional[int] = None
     ciudad: Optional[str] = None
     descripcion: Optional[str] = None
+
+    @field_validator("nombre", "sector", "ciudad")
+    @classmethod
+    def sanitize_short(cls, v: Optional[str]) -> Optional[str]:
+        return limpiar_nombre(v, max_len=255) if v is not None else None
+
+    @field_validator("descripcion")
+    @classmethod
+    def sanitize_desc(cls, v: Optional[str]) -> Optional[str]:
+        return limpiar_nombre(v, max_len=1000) if v is not None else None
 
 
 class EmpresaStats(BaseModel):

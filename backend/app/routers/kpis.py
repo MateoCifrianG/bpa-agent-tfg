@@ -1,4 +1,3 @@
-import re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -11,21 +10,15 @@ from app.models.empresa import Empresa
 from app.models.proceso import Proceso
 from app.models.user import User
 from app.auth.jwt import get_current_user
+from app.security.sanitize import limpiar_nombre
 
 router = APIRouter(prefix="/api/kpis", tags=["kpis"])
-
-_XSS_RE = re.compile(r"<script|javascript:", re.IGNORECASE)
 
 
 def _sanitize_str(v: str | None, max_len: int = 255) -> str | None:
     if v is None:
         return None
-    v = v.strip()
-    if len(v) > max_len:
-        raise ValueError(f"El campo no puede superar los {max_len} caracteres")
-    if _XSS_RE.search(v):
-        raise ValueError("El campo contiene contenido no permitido")
-    return v
+    return limpiar_nombre(v, max_len=max_len)
 
 
 class KPIOut(BaseModel):
