@@ -157,6 +157,13 @@ async def chat(
     historial.append({"role": "assistant", "content": respuesta_texto})
     conv.historial = json.dumps(historial, ensure_ascii=False)
 
+    log.info(
+        "chat ok — empresa=%s accion=%s",
+        empresa.id,
+        accion or "none",
+        extra={"empresa_id": empresa.id, "accion": accion, "intent": accion},
+    )
+
     await db.commit()
     await db.refresh(conv)
 

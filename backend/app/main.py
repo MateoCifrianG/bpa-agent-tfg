@@ -1,3 +1,5 @@
+import time
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,11 +10,40 @@ from app.config import settings
 from app.database import create_tables
 from app.routers import auth, credenciales, empresas, procesos, kpis, automatizaciones, agente, users, admin, ejecutar, integraciones
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.logging_config import setup_logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from app.database import AsyncSessionLocal
 
+_START_TIME: float = time.monotonic()
+logger = logging.getLogger("bpa.main")
+
 MAX_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Logs method, path, status code and latency for every request."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        t0 = time.monotonic()
+        response = await call_next(request)
+        ms = round((time.monotonic() - t0) * 1000)
+        # Skip health spam in production
+        if request.url.path != "/health":
+            logger.info(
+                "%s %s %d",
+                request.method,
+                request.url.path,
+                response.status_code,
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": response.status_code,
+                    "ms": ms,
+                    "ip": request.client.host if request.client else None,
+                },
+            )
+        return response
 
 
 class BodySizeLimitMiddleware(BaseHTTPMiddleware):
@@ -104,14 +135,17 @@ async def _migrate_db():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_logging(level="INFO", json_logs=not settings.DEBUG)
+    logger.info("BPA-Agent arrancando", extra={"version": settings.APP_VERSION})
     await create_tables()
     await _migrate_db()
     await _bootstrap_admin()
-    # Arrancar scheduler de automatizaciones
     from app.services.scheduler import start_scheduler, stop_scheduler
     await start_scheduler()
+    logger.info("BPA-Agent listo")
     yield
     await stop_scheduler()
+    logger.info("BPA-Agent detenido")
 
 
 app = FastAPI(
@@ -122,6 +156,7 @@ app = FastAPI(
 
 # ---- Middlewares (orden: de fuera hacia dentro) ----
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
@@ -157,4 +192,32 @@ app.include_router(integraciones.router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": settings.APP_VERSION}
+    """Enriched health check: DB ping, motor version, uptime."""
+    uptime_s = round(time.monotonic() - _START_TIME)
+    db_ok = False
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        pass
+
+    # Detect which motor version is active
+    motor_version = "v6"
+    try:
+        from app.agents import motor_v6  # noqa: F401
+    except ImportError:
+        try:
+            from app.agents import motor_v5  # noqa: F401
+            motor_version = "v5"
+        except ImportError:
+            motor_version = "v4"
+
+    status = "ok" if db_ok else "degraded"
+    return {
+        "status": status,
+        "version": settings.APP_VERSION,
+        "motor": motor_version,
+        "db": "ok" if db_ok else "error",
+        "uptime_s": uptime_s,
+    }
