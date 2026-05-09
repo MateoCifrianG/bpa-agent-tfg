@@ -13,6 +13,7 @@ from app.models.empresa import Empresa
 from app.models.proceso import Proceso
 from app.models.kpi import KPI
 from app.models.automatizacion import Automatizacion
+from app.models.ejecucion_log import EjecucionLog
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -223,6 +224,116 @@ async def delete_user(
     # SQLAlchemy maneja el cascade gracias a cascade="all, delete-orphan" en los modelos
     await db.delete(user)
     await db.commit()
+
+
+@router.get("/activity")
+async def global_activity(
+    limit: int = 100,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Global execution log across all automations (admin only)."""
+    result = await db.execute(
+        select(EjecucionLog, Automatizacion)
+        .join(Automatizacion, EjecucionLog.automatizacion_id == Automatizacion.id)
+        .order_by(EjecucionLog.created_at.desc())
+        .limit(limit)
+    )
+    rows = result.all()
+
+    # Build empresa→user map for display
+    emp_res = await db.execute(select(Empresa.id, Empresa.nombre, Empresa.user_id))
+    emp_map = {e.id: {"nombre": e.nombre, "user_id": e.user_id} for e in emp_res.all()}
+
+    user_ids = list({e["user_id"] for e in emp_map.values()})
+    usr_res = await db.execute(select(User.id, User.nombre, User.apellido).where(User.id.in_(user_ids)))
+    usr_map = {u.id: f"{u.nombre} {u.apellido}".strip() for u in usr_res.all()}
+
+    items = []
+    for log, auto in rows:
+        emp = emp_map.get(log.empresa_id, {})
+        user_name = usr_map.get(emp.get("user_id", ""), "—")
+        items.append({
+            "id": log.id,
+            "auto_id": log.automatizacion_id,
+            "auto_nombre": auto.nombre,
+            "empresa_nombre": emp.get("nombre", "—"),
+            "user_nombre": user_name,
+            "estado": log.estado,
+            "mensaje": log.mensaje,
+            "triggered_by": log.triggered_by,
+            "duracion_ms": log.duracion_ms,
+            "created_at": log.created_at,
+        })
+    return items
+
+
+@router.get("/sistema")
+async def sistema_status(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """System health check (admin only)."""
+    import httpx
+    from app.config import settings
+    from app.services.scheduler import listar_jobs_activos
+
+    # Ollama health
+    ollama_ok = False
+    ollama_models: list = []
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(f"{settings.OLLAMA_URL}/api/tags")
+            if r.status_code == 200:
+                ollama_ok = True
+                data = r.json()
+                ollama_models = [m["name"] for m in data.get("models", [])]
+    except Exception:
+        pass
+
+    # DB health
+    db_ok = False
+    db_users = 0
+    db_procesos = 0
+    db_autos = 0
+    try:
+        db_users = (await db.execute(select(func.count(User.id)))).scalar_one() or 0
+        db_procesos = (await db.execute(select(func.count(Proceso.id)))).scalar_one() or 0
+        db_autos = (await db.execute(select(func.count(Automatizacion.id)))).scalar_one() or 0
+        db_ok = True
+    except Exception:
+        pass
+
+    # Scheduler
+    jobs = listar_jobs_activos()
+
+    return {
+        "api": {"ok": True, "version": settings.APP_VERSION, "debug": settings.DEBUG},
+        "ollama": {
+            "ok": ollama_ok,
+            "url": settings.OLLAMA_URL,
+            "model": settings.OLLAMA_MODEL,
+            "models_disponibles": ollama_models,
+        },
+        "scheduler": {
+            "ok": True,
+            "jobs_activos": len(jobs),
+            "jobs": jobs[:10],
+        },
+        "database": {
+            "ok": db_ok,
+            "users": db_users,
+            "procesos": db_procesos,
+            "automatizaciones": db_autos,
+        },
+        "motor_activo": "v5 (Ollama LLM)" if ollama_ok else "v4 (NLP local)",
+        "seguridad": {
+            "cors_modo": "debug (abierto)" if settings.DEBUG else "producción (restringido)",
+            "body_limit_mb": 1,
+            "jwt_algoritmo": "HS256",
+            "rate_limit": "activo",
+        },
+    }
 
 
 @router.post("/users", response_model=AdminUserOut, status_code=201)
