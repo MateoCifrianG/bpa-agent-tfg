@@ -1,14 +1,14 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from app.database import get_db
 from app.models.user import User
 from app.auth.jwt import get_current_user, hash_password, verify_password
 from app.schemas.auth import UserOut
-from fastapi import HTTPException
+from app.security.sanitize import limpiar_nombre, validar_password
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -19,10 +19,28 @@ class UserUpdate(BaseModel):
     telefono: Optional[str] = None
     ciudad: Optional[str] = None
 
+    @field_validator("nombre", "apellido", "ciudad")
+    @classmethod
+    def sanitize_str(cls, v: Optional[str]) -> Optional[str]:
+        return limpiar_nombre(v, max_len=255) if v is not None else None
+
+    @field_validator("telefono")
+    @classmethod
+    def sanitize_telefono(cls, v: Optional[str]) -> Optional[str]:
+        return limpiar_nombre(v, max_len=30) if v is not None else None
+
 
 class PasswordChange(BaseModel):
     password_actual: str
     password_nuevo: str
+
+    @field_validator("password_nuevo")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        errors = validar_password(v)
+        if errors:
+            raise ValueError("; ".join(errors))
+        return v
 
 
 class DeleteAccountRequest(BaseModel):
