@@ -5,5 +5,6 @@ from app.models.automatizacion import Automatizacion
 from app.models.kpi import KPI
 from app.models.conversacion import Conversacion
 from app.models.credencial import Credencial
+from app.models.ejecucion_log import EjecucionLog
 
-__all__ = ["User", "Empresa", "Proceso", "Automatizacion", "KPI", "Conversacion", "Credencial"]
+__all__ = ["User", "Empresa", "Proceso", "Automatizacion", "KPI", "Conversacion", "Credencial", "EjecucionLog"]

@@ -608,8 +608,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     const { token } = API.session.get();
     const [userRes, empRes] = await Promise.allSettled([
-      fetch('http://localhost:8001/api/users/me', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
-      fetch('http://localhost:8001/api/empresa/mia', { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.ok ? r.json() : null),
+      fetch('http://localhost:8002/api/users/me', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
+      fetch('http://localhost:8002/api/empresa/mia', { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.ok ? r.json() : null),
     ]);
     if (userRes.status === 'fulfilled' && userRes.value) {
       currentUser = userRes.value;
@@ -686,7 +686,7 @@ async function savePerfil() {
 
   try {
     const { token } = API.session.get();
-    const r = await fetch('http://localhost:8001/api/users/me', {
+    const r = await fetch('http://localhost:8002/api/users/me', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ nombre, apellido }),
@@ -718,7 +718,7 @@ async function saveEmpresa(silent = false) {
 
   try {
     const { token } = API.session.get();
-    const r = await fetch('http://localhost:8001/api/empresa/mia', {
+    const r = await fetch('http://localhost:8002/api/empresa/mia', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ nombre, sector: sector || null, empleados }),
@@ -739,7 +739,7 @@ async function changePassword() {
 
   try {
     const { token } = API.session.get();
-    const r = await fetch('http://localhost:8001/api/users/me/password', {
+    const r = await fetch('http://localhost:8002/api/users/me/password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ password_actual: cur, password_nuevo: nw }),
@@ -759,11 +759,11 @@ async function exportData() {
   try {
     const { token } = API.session.get();
     const [userRes, empRes, procRes, autosRes, kpisRes] = await Promise.allSettled([
-      fetch('http://localhost:8001/api/users/me',         { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-      fetch('http://localhost:8001/api/empresa/mia',      { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
-      fetch('http://localhost:8001/api/procesos',         { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
-      fetch('http://localhost:8001/api/automatizaciones', { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
-      fetch('http://localhost:8001/api/kpis',             { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
+      fetch('http://localhost:8002/api/users/me',         { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+      fetch('http://localhost:8002/api/empresa/mia',      { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
+      fetch('http://localhost:8002/api/procesos',         { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
+      fetch('http://localhost:8002/api/automatizaciones', { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
+      fetch('http://localhost:8002/api/kpis',             { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }).then(r => r.json()),
     ]);
     const dump = {
       usuario:        userRes.status  === 'fulfilled' ? userRes.value  : null,
@@ -795,7 +795,7 @@ async function deactivateAccount() {
   if (!pw) { toast('Introduce tu contraseña para confirmar', 'err'); return; }
   try {
     const { token } = API.session.get();
-    const r = await fetch('http://localhost:8001/api/users/me/deactivate', {
+    const r = await fetch('http://localhost:8002/api/users/me/deactivate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ password: pw }),
@@ -818,7 +818,7 @@ async function deleteAccount() {
   if (!pw) { toast('Introduce tu contraseña para confirmar', 'err'); return; }
   try {
     const { token } = API.session.get();
-    const r = await fetch('http://localhost:8001/api/users/me', {
+    const r = await fetch('http://localhost:8002/api/users/me', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ password: pw }),

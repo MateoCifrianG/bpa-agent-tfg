@@ -11,10 +11,11 @@ venv/
 dist/
 build/
 
-# Entornos y secretos
+# Entornos y secretos (nunca subir claves reales)
 .env
 *.env.local
 .env.*
+!.env.example          # sí subir la plantilla
 
 # Base de datos (no subir datos reales)
 *.db
@@ -40,6 +41,9 @@ yarn-error.log
 Thumbs.db
 desktop.ini
 
-# Claude
+# Claude Code (memoria local del asistente)
 .claude/
+
+# Archivos residuales / prototipos anteriores
 landing-preview/
+residual/

@@ -22,8 +22,19 @@ class Settings(BaseSettings):
     # Claude API
     ANTHROPIC_API_KEY: str = ""
 
-    # Encryption (Fernet) — para credenciales MCP
+    # Encryption (Fernet) — para credenciales MCP e integraciones
     ENCRYPTION_KEY: str = ""
+
+    # Google OAuth2 (gratis en Google Cloud Console)
+    GOOGLE_CLIENT_ID:     str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+
+    # n8n (self-hosted, gratis)
+    N8N_URL: str = "http://localhost:5678"
+
+    # Ollama (LLM local, gratis)
+    OLLAMA_URL:   str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.1:8b"
 
     # Admin bootstrap
     ADMIN_EMAIL: str = "admin@bpa.com"

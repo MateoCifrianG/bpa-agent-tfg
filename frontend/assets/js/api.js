@@ -1,9 +1,9 @@
 /**
  * BPA-Agent · API client
- * Conecta la interfaz HTML con el backend FastAPI en localhost:8001
+ * Conecta la interfaz HTML con el backend FastAPI en localhost:8002
  */
 
-const API_BASE = 'http://localhost:8001';
+const API_BASE = 'http://localhost:8002';
 
 // ── Sesión (sessionStorage para persistir entre páginas) ─────────────────
 const _session = {
@@ -90,7 +90,7 @@ async function _apiFetch(path, options = {}, _retry = false) {
     console.error('[BPA API] Error de red:', networkErr);
     return {
       ok: false,
-      error: 'No se pudo conectar con el servidor. ¿Está el backend corriendo en el puerto 8001?',
+      error: 'No se pudo conectar con el servidor. ¿Está el backend corriendo en el puerto 8002?',
     };
   }
 

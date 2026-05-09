@@ -1559,6 +1559,314 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
 .typing-dot:nth-child(2) { animation-delay: .22s; }
 .typing-dot:nth-child(3) { animation-delay: .44s; }
 @keyframes blink { 0%,100% { opacity: .25; transform: scale(.7); } 50% { opacity: 1; transform: scale(1); } }
+
+/* ══════════════════════════════════════════════════════════════
+   AUTOMATIZACIONES — Cards + Detail Page
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Automation card grid ─────────────────────────────────────── */
+.auto-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+.auto-card {
+  background: var(--s1); border: 1px solid var(--border); border-radius: 16px;
+  padding: 1.25rem; cursor: pointer;
+  transition: border-color .2s, transform .2s, box-shadow .2s;
+  position: relative; overflow: hidden;
+}
+.auto-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0; transition: opacity .2s;
+}
+.auto-card:hover { border-color: var(--border-hi); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,.35); }
+.auto-card:hover::before { opacity: 1; }
+.auto-card.estado-error  { border-color: rgba(244,63,94,.3); }
+.auto-card.estado-activa { border-color: rgba(16,185,129,.2); }
+.auto-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; margin-bottom: .875rem; }
+.auto-card-icon { width: 38px; height: 38px; border-radius: 10px; background: rgba(var(--accent-rgb),.1); border: 1px solid rgba(var(--accent-rgb),.2); display: grid; place-items: center; flex-shrink: 0; }
+.auto-card-icon svg { width: 18px; height: 18px; stroke: var(--accent); stroke-width: 1.8; fill: none; }
+.auto-card-title { font-size: .88rem; font-weight: 600; color: var(--fg); line-height: 1.3; }
+.auto-card-desc { font-size: .72rem; color: var(--fg-3); margin-top: .2rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.auto-card-badges { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .875rem; }
+.auto-badge { font-size: .63rem; font-weight: 600; letter-spacing: .04em; padding: .2rem .55rem; border-radius: 99px; display: inline-flex; align-items: center; gap: .3rem; }
+.auto-badge svg { width: 11px; height: 11px; stroke: currentColor; stroke-width: 2; fill: none; flex-shrink: 0; }
+.auto-badge.trigger { background: rgba(99,102,241,.12); color: #a5b4fc; border: 1px solid rgba(99,102,241,.25); }
+.auto-badge.action  { background: rgba(34,211,238,.1); color: var(--cyan); border: 1px solid rgba(34,211,238,.2); }
+.auto-card-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .5rem; padding: .75rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-bottom: .875rem; }
+.auto-stat { text-align: center; }
+.auto-stat-val { font-size: .9rem; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; }
+.auto-stat-lbl { font-size: .62rem; color: var(--fg-3); text-transform: uppercase; letter-spacing: .06em; margin-top: .15rem; }
+.auto-card-footer { display: flex; align-items: center; justify-content: space-between; }
+.auto-card-lastrun { font-size: .68rem; color: var(--fg-3); }
+.auto-card-actions { display: flex; gap: .35rem; }
+
+/* ── Automation Detail Page ──────────────────────────────────── */
+.auto-detail-wrap { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.auto-detail-hero { padding: 1.5rem 1.5rem 0; flex-shrink: 0; }
+.auto-detail-back {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .75rem; color: var(--fg-3); cursor: pointer;
+  background: none; border: none; padding: 0;
+  font-family: inherit; margin-bottom: 1rem; transition: color .15s;
+}
+.auto-detail-back:hover { color: var(--fg); }
+.auto-detail-back svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; fill: none; }
+.auto-detail-header { display: flex; align-items: center; gap: 1rem; justify-content: space-between; flex-wrap: wrap; }
+.auto-detail-title-row { display: flex; align-items: center; gap: .875rem; }
+.auto-detail-icon { width: 48px; height: 48px; border-radius: 13px; background: rgba(var(--accent-rgb),.1); border: 1px solid rgba(var(--accent-rgb),.25); display: grid; place-items: center; flex-shrink: 0; }
+.auto-detail-icon svg { width: 22px; height: 22px; stroke: var(--accent); stroke-width: 1.8; fill: none; }
+.auto-detail-name { font-family: "Instrument Serif", serif; font-size: 1.6rem; color: var(--fg); line-height: 1.2; }
+.auto-detail-meta { font-size: .75rem; color: var(--fg-3); margin-top: .2rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.auto-detail-actions { display: flex; align-items: center; gap: .5rem; }
+.run-btn {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .6rem 1.25rem; border-radius: 10px;
+  font-family: inherit; font-size: .82rem; font-weight: 600;
+  cursor: pointer; border: none;
+  background: linear-gradient(135deg, oklch(0.86 0.18 140), oklch(0.72 0.20 160));
+  color: #0a0a0f; box-shadow: 0 4px 18px rgba(var(--accent-rgb),.4);
+  transition: opacity .2s, transform .15s, box-shadow .2s;
+}
+.run-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(var(--accent-rgb),.55); }
+.run-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.run-btn svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 2.5; fill: none; }
+.run-btn.running { animation: runPulse 1.5s ease-in-out infinite; }
+@keyframes runPulse { 0%,100% { box-shadow: 0 4px 18px rgba(var(--accent-rgb),.4); } 50% { box-shadow: 0 4px 32px rgba(var(--accent-rgb),.8); } }
+
+/* ── Detail tabs ─────────────────────────────────────────────── */
+.detail-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); padding: 0 1.5rem; margin-top: 1.25rem; flex-shrink: 0; }
+.detail-tab { padding: .75rem 1rem; font-size: .8rem; font-weight: 500; color: var(--fg-3); cursor: pointer; background: none; border: none; font-family: inherit; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; display: flex; align-items: center; gap: .4rem; }
+.detail-tab:hover { color: var(--fg); }
+.detail-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.detail-tab svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.detail-tab-body { flex: 1; overflow-y: auto; padding: 1.5rem; }
+.detail-tab-body::-webkit-scrollbar { width: 6px; }
+.detail-tab-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+.detail-tab-panel { display: none; }
+.detail-tab-panel.active { display: block; }
+
+/* ── Stat chips ──────────────────────────────────────────────── */
+.auto-stat-chips { display: grid; grid-template-columns: repeat(4,1fr); gap: .75rem; margin-bottom: 1.5rem; }
+@media (max-width: 900px) { .auto-stat-chips { grid-template-columns: repeat(2,1fr); } }
+.auto-stat-chip { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; }
+.auto-stat-chip-label { font-size: .68rem; text-transform: uppercase; letter-spacing: .07em; color: var(--fg-3); font-weight: 600; margin-bottom: .35rem; }
+.auto-stat-chip-value { font-size: 1.5rem; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; }
+.auto-stat-chip-sub { font-size: .7rem; color: var(--fg-3); margin-top: .15rem; }
+
+/* ── Option card selector ────────────────────────────────────── */
+.option-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .625rem; margin-bottom: 1.25rem; }
+.option-card { padding: .9rem; border-radius: 12px; border: 1.5px solid var(--border); background: var(--s1); cursor: pointer; text-align: center; transition: border-color .15s, background .15s; font-family: inherit; }
+.option-card:hover { border-color: var(--border-hi); background: var(--s2-hi); }
+.option-card.selected { border-color: var(--accent); background: rgba(var(--accent-rgb),.06); box-shadow: 0 0 0 1px rgba(var(--accent-rgb),.15); }
+.option-card-icon { width: 36px; height: 36px; border-radius: 9px; background: var(--hover-bg); border: 1px solid var(--border); display: grid; place-items: center; margin: 0 auto .6rem; }
+.option-card.selected .option-card-icon { background: rgba(var(--accent-rgb),.12); border-color: rgba(var(--accent-rgb),.3); }
+.option-card-icon svg { width: 17px; height: 17px; stroke: var(--fg-2); stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.option-card.selected .option-card-icon svg { stroke: var(--accent); }
+.option-card-label { font-size: .75rem; font-weight: 600; color: var(--fg-2); }
+.option-card.selected .option-card-label { color: var(--fg); }
+.option-card-sub { font-size: .63rem; color: var(--fg-3); margin-top: .2rem; line-height: 1.3; }
+
+/* ── Config section box ──────────────────────────────────────── */
+.config-section { background: var(--s1); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; margin-top: .25rem; }
+.config-section-title { font-size: .78rem; font-weight: 600; color: var(--fg); margin-bottom: 1rem; display: flex; align-items: center; gap: .5rem; }
+.config-section-title svg { width: 14px; height: 14px; stroke: var(--accent); stroke-width: 2; fill: none; }
+
+/* ── Cron builder ────────────────────────────────────────────── */
+.cron-presets { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .875rem; }
+.cron-preset { padding: .3rem .7rem; border-radius: 8px; font-size: .73rem; font-weight: 500; border: 1px solid var(--border); background: var(--input-bg); color: var(--fg-2); cursor: pointer; font-family: inherit; transition: border-color .15s, color .15s, background .15s; }
+.cron-preset:hover { border-color: var(--border-hi); color: var(--fg); }
+.cron-preset.active { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb),.06); }
+.cron-human { font-size: .78rem; color: var(--accent); margin-top: .5rem; }
+
+/* ── Webhook URL ─────────────────────────────────────────────── */
+.webhook-url-box { display: flex; align-items: center; gap: .5rem; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .875rem; }
+.webhook-url-text { flex: 1; font-family: ui-monospace, monospace; font-size: .72rem; color: var(--cyan); word-break: break-all; }
+.webhook-copy-btn { background: none; border: none; cursor: pointer; color: var(--fg-3); padding: .25rem; border-radius: 5px; transition: color .15s; flex-shrink: 0; }
+.webhook-copy-btn:hover { color: var(--fg); }
+.webhook-copy-btn svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; fill: none; }
+
+/* ── Execution history ───────────────────────────────────────── */
+.history-list { display: flex; flex-direction: column; gap: .5rem; }
+.history-item { display: flex; align-items: flex-start; gap: .875rem; padding: .875rem; border-radius: 12px; background: var(--s1); border: 1px solid var(--border); transition: border-color .15s; }
+.history-item:hover { border-color: var(--border-hi); }
+.history-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; }
+.history-dot.ok   { background: rgba(16,185,129,.12); color: var(--emerald); }
+.history-dot.fail { background: rgba(244,63,94,.12);  color: var(--rose); }
+.history-dot.run  { background: rgba(245,158,11,.12); color: var(--amber); }
+.history-dot svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.history-content { flex: 1; min-width: 0; }
+.history-title { font-size: .82rem; font-weight: 500; color: var(--fg); }
+.history-meta { font-size: .7rem; color: var(--fg-3); margin-top: .2rem; display: flex; gap: .75rem; flex-wrap: wrap; }
+.history-msg { font-size: .72rem; color: var(--fg-2); margin-top: .3rem; font-family: ui-monospace, monospace; background: var(--input-bg); padding: .3rem .6rem; border-radius: 6px; white-space: pre-wrap; word-break: break-word; }
+.history-duration { font-size: .68rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg-3); flex-shrink: 0; align-self: center; }
+
+/* ── Save bar ────────────────────────────────────────────────── */
+.save-bar { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+
+/* ── Empty / info states ─────────────────────────────────────── */
+.empty-history { text-align: center; padding: 3rem 1rem; color: var(--fg-3); }
+.empty-history svg { width: 40px; height: 40px; stroke: var(--fg-3); stroke-width: 1.5; fill: none; margin: 0 auto .75rem; display: block; }
+.info-banner { background: rgba(99,102,241,.08); border: 1px solid rgba(99,102,241,.2); border-radius: 10px; padding: .875rem; font-size: .78rem; color: var(--fg-2); line-height: 1.5; }
+.warn-banner { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2); border-radius: 10px; padding: .875rem; font-size: .78rem; color: var(--fg-2); line-height: 1.5; }
+
+/* ══════════════════════════════════════════════════════════════
+   CENTRO DE CONTROL
+   ══════════════════════════════════════════════════════════════ */
+.centro-wrap { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+/* ── Status bar ──────────────────────────────────────────────── */
+.centro-statusbar {
+  display: flex; align-items: center; gap: .625rem;
+  padding: .875rem 1.5rem .5rem;
+  flex-shrink: 0; flex-wrap: wrap;
+}
+.centro-status-eyebrow {
+  font-size: .62rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--fg-3);
+  margin-right: .25rem;
+}
+.status-chip {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .28rem .7rem; border-radius: 99px;
+  font-size: .67rem; font-weight: 600;
+  border: 1px solid;
+  transition: opacity .3s;
+}
+.status-chip.ok    { background: rgba(16,185,129,.08); color: #34d399; border-color: rgba(16,185,129,.25); }
+.status-chip.warn  { background: rgba(245,158,11,.08); color: var(--amber); border-color: rgba(245,158,11,.25); }
+.status-chip.err   { background: rgba(244,63,94,.08);  color: var(--rose);  border-color: rgba(244,63,94,.25); }
+.status-chip.off   { background: rgba(90,90,114,.08);  color: var(--fg-3);  border-color: var(--border); }
+.status-chip-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.status-chip.ok .status-chip-dot { animation: pulse 2s ease-in-out infinite; }
+.centro-refresh-btn {
+  margin-left: auto; font-size: .68rem; color: var(--fg-3);
+  background: none; border: none; cursor: pointer;
+  display: flex; align-items: center; gap: .3rem;
+  font-family: inherit; transition: color .15s;
+}
+.centro-refresh-btn:hover { color: var(--fg); }
+.centro-refresh-btn svg { width: 12px; height: 12px; stroke: currentColor; stroke-width: 2.5; fill: none; }
+.centro-last-update { font-size: .63rem; color: var(--fg-3); }
+
+/* ── Main grid ───────────────────────────────────────────────── */
+.centro-body { flex: 1; overflow-y: auto; padding: .875rem 1.5rem 1.5rem; }
+.centro-body::-webkit-scrollbar { width: 6px; }
+.centro-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+.centro-grid { display: grid; grid-template-columns: 1fr 340px; gap: 1rem; align-items: start; }
+@media (max-width: 1100px) { .centro-grid { grid-template-columns: 1fr; } }
+
+/* ── Centro card ─────────────────────────────────────────────── */
+.cc { background: var(--s1); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.cc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .875rem 1rem .625rem; border-bottom: 1px solid var(--border);
+}
+.cc-title { font-size: .78rem; font-weight: 600; color: var(--fg); display: flex; align-items: center; gap: .4rem; }
+.cc-title svg { width: 14px; height: 14px; stroke: var(--accent); stroke-width: 2; fill: none; }
+.cc-action { font-size: .68rem; color: var(--fg-3); background: none; border: none; cursor: pointer; font-family: inherit; transition: color .15s; }
+.cc-action:hover { color: var(--fg); }
+.cc-body { padding: .875rem 1rem; }
+
+/* ── Command console ─────────────────────────────────────────── */
+.cmd-output {
+  min-height: 110px; max-height: 200px; overflow-y: auto;
+  font-family: ui-monospace, monospace; font-size: .73rem; color: var(--fg-2);
+  line-height: 1.6; margin-bottom: .625rem;
+  background: rgba(0,0,0,.25); border-radius: 8px; padding: .625rem .75rem;
+}
+.cmd-output::-webkit-scrollbar { width: 4px; }
+.cmd-output::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+.cmd-line { display: flex; gap: .5rem; align-items: flex-start; }
+.cmd-line.user .cmd-prefix { color: var(--accent); }
+.cmd-line.agent .cmd-prefix { color: var(--indigo); }
+.cmd-line.sys .cmd-prefix { color: var(--fg-3); }
+.cmd-prefix { font-size: .65rem; font-weight: 700; flex-shrink: 0; padding-top: .05rem; }
+.cmd-text { flex: 1; word-break: break-word; }
+.cmd-input-row { display: flex; gap: .5rem; }
+.cmd-prompt { padding: .5rem .75rem; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; font-family: ui-monospace, monospace; font-size: .75rem; color: var(--fg); flex: 1; outline: none; transition: border-color .15s; }
+.cmd-prompt:focus { border-color: var(--accent); }
+.cmd-send { padding: .5rem .9rem; border-radius: 8px; font-size: .73rem; font-weight: 600; font-family: inherit; cursor: pointer; border: none; background: linear-gradient(135deg, oklch(0.86 0.18 140), oklch(0.72 0.20 160)); color: #0a0a0f; white-space: nowrap; }
+
+/* ── Automation monitor ──────────────────────────────────────── */
+.auto-monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .625rem; }
+.am-card {
+  background: var(--s2); border: 1px solid var(--border); border-radius: 10px;
+  padding: .75rem; display: flex; flex-direction: column; gap: .5rem;
+  cursor: pointer; transition: border-color .15s;
+}
+.am-card:hover { border-color: var(--border-hi); }
+.am-card.estado-activa { border-left: 3px solid var(--emerald); }
+.am-card.estado-error   { border-left: 3px solid var(--rose); }
+.am-card.estado-pausada { border-left: 3px solid var(--amber); }
+.am-card-header { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.am-card-name { font-size: .78rem; font-weight: 600; color: var(--fg); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.am-card-meta { font-size: .67rem; color: var(--fg-3); display: flex; gap: .5rem; }
+.am-card-actions { display: flex; gap: .3rem; }
+.am-run-btn { padding: .25rem .55rem; border-radius: 6px; font-size: .65rem; font-weight: 600; font-family: inherit; cursor: pointer; border: 1px solid rgba(var(--accent-rgb),.3); background: rgba(var(--accent-rgb),.08); color: var(--accent); transition: background .15s; }
+.am-run-btn:hover { background: rgba(var(--accent-rgb),.18); }
+
+/* ── Activity feed ───────────────────────────────────────────── */
+.feed-list { display: flex; flex-direction: column; gap: .375rem; }
+.feed-item { display: flex; align-items: flex-start; gap: .625rem; padding: .55rem .625rem; border-radius: 8px; background: var(--s2); transition: background .15s; }
+.feed-item:hover { background: var(--s2-hi); }
+.feed-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: .35rem; }
+.feed-dot.ok   { background: var(--emerald); box-shadow: 0 0 6px var(--emerald); }
+.feed-dot.fail { background: var(--rose);    box-shadow: 0 0 6px var(--rose); }
+.feed-dot.run  { background: var(--amber);   box-shadow: 0 0 6px var(--amber); }
+.feed-content { flex: 1; min-width: 0; }
+.feed-title { font-size: .75rem; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-sub   { font-size: .67rem; color: var(--fg-3); margin-top: .1rem; }
+.feed-time  { font-size: .65rem; color: var(--fg-3); flex-shrink: 0; }
+
+/* ── Quick actions ───────────────────────────────────────────── */
+.qa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.qa-btn {
+  padding: .75rem .625rem; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--s2);
+  cursor: pointer; font-family: inherit; text-align: left;
+  transition: border-color .15s, background .15s, transform .1s;
+  display: flex; align-items: center; gap: .5rem;
+}
+.qa-btn:hover { border-color: var(--border-hi); background: var(--s2-hi); transform: translateY(-1px); }
+.qa-btn svg { width: 16px; height: 16px; stroke: var(--accent); stroke-width: 1.8; fill: none; flex-shrink: 0; }
+.qa-btn-label { font-size: .73rem; font-weight: 600; color: var(--fg); line-height: 1.2; }
+.qa-btn-sub   { font-size: .63rem; color: var(--fg-3); }
+
+/* ── Users table ─────────────────────────────────────────────── */
+.users-list { display: flex; flex-direction: column; gap: .35rem; }
+.user-row { display: flex; align-items: center; gap: .625rem; padding: .45rem .25rem; border-radius: 7px; transition: background .15s; }
+.user-row:hover { background: var(--hover-bg); }
+.user-avatar-sm { width: 28px; height: 28px; border-radius: 50%; background: rgba(var(--accent-rgb),.15); border: 1px solid rgba(var(--accent-rgb),.25); display: grid; place-items: center; font-size: .67rem; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+.user-info-col { flex: 1; min-width: 0; }
+.user-name-sm { font-size: .75rem; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-email-sm { font-size: .65rem; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-plan-badge { font-size: .6rem; font-weight: 700; padding: .15rem .45rem; border-radius: 99px; }
+.user-plan-badge.free { background: rgba(90,90,114,.15); color: var(--fg-3); }
+.user-plan-badge.pro  { background: rgba(99,102,241,.15); color: #a5b4fc; }
+.user-plan-badge.ent  { background: rgba(var(--accent-rgb),.15); color: var(--accent); }
+
+/* ── Connector status ────────────────────────────────────────── */
+.conn-list { display: flex; flex-direction: column; gap: .4rem; }
+.conn-row { display: flex; align-items: center; gap: .625rem; padding: .45rem .25rem; border-radius: 7px; transition: background .15s; }
+.conn-row:hover { background: var(--hover-bg); }
+.conn-icon { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
+.conn-icon svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; }
+.conn-name { flex: 1; font-size: .75rem; font-weight: 500; color: var(--fg); }
+.conn-status { font-size: .65rem; font-weight: 600; }
+.conn-status.on  { color: var(--emerald); }
+.conn-status.off { color: var(--fg-3); }
+.conn-status.cfg { color: var(--amber); }
+
+/* ── Heatmap ─────────────────────────────────────────────────── */
+.score-heatmap { display: flex; flex-direction: column; gap: .375rem; }
+.score-row { display: flex; align-items: center; gap: .5rem; }
+.score-bar-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; }
+.score-bar { height: 100%; border-radius: 99px; transition: width .6s ease; }
+.score-name { font-size: .72rem; color: var(--fg-2); width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.score-val { font-size: .68rem; color: var(--fg-3); width: 28px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* ── LIVE badge ──────────────────────────────────────────────── */
+.live-badge { display: inline-flex; align-items: center; gap: .35rem; font-size: .62rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.live-badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s ease-in-out infinite; }
 </style>
 </head>
 <body>
@@ -1636,6 +1944,14 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
       <a class="nav-item" data-page="KPIs" href="#" onclick="setPage(this,'KPIs','page-kpis');return false">
         <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
         <span class="nav-text">KPIs</span>
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Sistema</div>
+      <a class="nav-item" data-page="Centro de Control" href="#" onclick="setPage(this,'Centro de Control','page-centro');return false">
+        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span class="nav-text">Centro de Control</span>
       </a>
     </div>
 
@@ -1974,6 +2290,152 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
     </div>
     </div><!-- end page-automatizaciones -->
 
+    <!-- ══ PAGE: AUTOMATIZACION DETAIL ══ -->
+    <div id="page-auto-detail" class="page-section" style="display:none">
+    <div class="full-page active auto-detail-wrap" style="display:flex">
+
+      <div class="auto-detail-hero">
+        <button class="auto-detail-back" onclick="backToAutos()">
+          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+          Automatizaciones
+        </button>
+        <div class="auto-detail-header">
+          <div class="auto-detail-title-row">
+            <div class="auto-detail-icon">
+              <svg viewBox="0 0 24 24"><path d="m13 2-2 2.5h3L12 7"/><path d="M10 14v-3a2 2 0 0 1 4 0v3"/><path d="M6 14a2 2 0 0 0-2 2v2h16v-2a2 2 0 0 0-2-2"/><path d="M14 14H10"/></svg>
+            </div>
+            <div>
+              <div class="auto-detail-name" id="detailAutoName">–</div>
+              <div class="auto-detail-meta">
+                <span id="detailAutoStatus"></span>
+                <span id="detailAutoTriggerBadge"></span>
+                <span id="detailAutoActionBadge"></span>
+              </div>
+            </div>
+          </div>
+          <div class="auto-detail-actions">
+            <button class="btn-secondary" id="detailToggleBtn" onclick="toggleAutoEstado()" style="font-size:.75rem;padding:.45rem .9rem">Pausar</button>
+            <button class="run-btn" id="detailRunBtn" onclick="runAutoNow()">
+              <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Ejecutar ahora
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabs nav -->
+      <div class="detail-tabs">
+        <button class="detail-tab active" data-tab="overview" onclick="switchDetailTab('overview',this)">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Resumen
+        </button>
+        <button class="detail-tab" data-tab="trigger" onclick="switchDetailTab('trigger',this)">
+          <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Disparador
+        </button>
+        <button class="detail-tab" data-tab="action" onclick="switchDetailTab('action',this)">
+          <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          Acción
+        </button>
+        <button class="detail-tab" data-tab="history" onclick="switchDetailTab('history',this)">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Historial
+        </button>
+      </div>
+
+      <div class="detail-tab-body">
+
+        <!-- ─ TAB: RESUMEN ─ -->
+        <div class="detail-tab-panel active" id="tab-overview">
+          <div class="auto-stat-chips" id="detailStatChips"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem">
+            <div class="config-section">
+              <div class="config-section-title">
+                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Configuración general
+              </div>
+              <div class="form-grid">
+                <div class="field-group" style="grid-column:1/-1">
+                  <label class="field-label">Nombre</label>
+                  <input class="field-input" id="ovNombre" maxlength="255" placeholder="Nombre de la automatización"/>
+                </div>
+                <div class="field-group" style="grid-column:1/-1">
+                  <label class="field-label">Descripción</label>
+                  <textarea class="field-textarea" id="ovDesc" rows="3" maxlength="1000" placeholder="¿Qué hace esta automatización?"></textarea>
+                </div>
+                <div class="field-group">
+                  <label class="field-label">Estado</label>
+                  <select class="field-select" id="ovEstado">
+                    <option value="activa">Activa</option>
+                    <option value="pendiente">Pendiente</option>
+                    <option value="pausada">Pausada</option>
+                    <option value="error">Error</option>
+                  </select>
+                </div>
+                <div class="field-group">
+                  <label class="field-label">Horas ahorradas / mes</label>
+                  <input class="field-input" id="ovHoras" type="number" min="0" max="10000" placeholder="Ej: 8"/>
+                </div>
+              </div>
+            </div>
+            <div class="config-section">
+              <div class="config-section-title">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Últimas ejecuciones
+              </div>
+              <div id="detailRecentHistory"><div class="loading-row"><div class="spinner"></div></div></div>
+            </div>
+          </div>
+          <div class="save-bar">
+            <button class="btn-secondary" onclick="loadAutoDetail(_currentAutoId)">Descartar</button>
+            <button class="btn-cta" onclick="saveOverviewChanges()">Guardar cambios</button>
+          </div>
+        </div>
+
+        <!-- ─ TAB: DISPARADOR ─ -->
+        <div class="detail-tab-panel" id="tab-trigger">
+          <div style="margin-bottom:1rem">
+            <div class="field-label" style="margin-bottom:.625rem;font-size:.8rem;font-weight:600">Tipo de disparador</div>
+            <div class="option-cards" id="triggerOptions"></div>
+          </div>
+          <div id="triggerConfigArea"></div>
+          <div class="save-bar">
+            <button class="btn-cta" onclick="saveTriggerConfig()">Guardar disparador</button>
+          </div>
+        </div>
+
+        <!-- ─ TAB: ACCIÓN ─ -->
+        <div class="detail-tab-panel" id="tab-action">
+          <div style="margin-bottom:1rem">
+            <div class="field-label" style="margin-bottom:.625rem;font-size:.8rem;font-weight:600">Tipo de acción</div>
+            <div class="option-cards" id="actionOptions"></div>
+          </div>
+          <div id="actionConfigArea"></div>
+          <div class="save-bar">
+            <button class="btn-secondary" id="testActionBtn" onclick="testActionConnector()">
+              <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Probar conexión
+            </button>
+            <button class="btn-cta" onclick="saveActionConfig()">Guardar acción</button>
+          </div>
+        </div>
+
+        <!-- ─ TAB: HISTORIAL ─ -->
+        <div class="detail-tab-panel" id="tab-history">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+            <div style="font-size:.85rem;font-weight:600;color:var(--fg)">Registro de ejecuciones</div>
+            <button class="btn-secondary" style="font-size:.73rem;padding:.35rem .75rem" onclick="loadAutoHistory(_currentAutoId)">
+              <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;stroke-width:2;fill:none"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.73-3.9"/></svg>
+              Actualizar
+            </button>
+          </div>
+          <div id="detailHistoryList"><div class="loading-row"><div class="spinner"></div></div></div>
+        </div>
+
+      </div>
+    </div>
+    </div><!-- end page-auto-detail -->
+
     <!-- ══ PAGE: KPIs ══ -->
     <div id="page-kpis" class="page-section" style="display:none">
     <div class="full-page active" style="display:flex">
@@ -1992,6 +2454,203 @@ html[data-theme="light"] .modal-backdrop { background: rgba(20,20,40,.32); }
       </div>
     </div>
     </div><!-- end page-kpis -->
+
+    <!-- ══ PAGE: CENTRO DE CONTROL ══ -->
+    <div id="page-centro" class="page-section" style="display:none">
+    <div class="full-page active centro-wrap" style="display:flex">
+
+      <!-- Status bar -->
+      <div class="centro-statusbar">
+        <span class="centro-status-eyebrow">Estado del sistema</span>
+        <span class="status-chip ok" id="cs-api"><span class="status-chip-dot"></span>API</span>
+        <span class="status-chip ok" id="cs-scheduler"><span class="status-chip-dot"></span>Scheduler</span>
+        <span class="status-chip warn" id="cs-ai"><span class="status-chip-dot"></span>Motor IA</span>
+        <span class="status-chip off" id="cs-connectors"><span class="status-chip-dot"></span>Conectores</span>
+        <span class="status-chip ok" id="cs-db"><span class="status-chip-dot"></span>Base de datos</span>
+        <span class="centro-last-update" id="centroLastUpdate"></span>
+        <button class="centro-refresh-btn" onclick="loadCentro(true)">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.73-3.9"/></svg>
+          Actualizar
+        </button>
+      </div>
+
+      <!-- Page header -->
+      <div class="page-header" style="padding-top:.5rem">
+        <div>
+          <div class="page-header-title" style="display:flex;align-items:center;gap:.75rem">
+            Centro de Control
+            <span class="live-badge"><span class="live-badge-dot"></span>LIVE</span>
+          </div>
+          <div class="page-header-sub">Monitorización en tiempo real · automatizaciones · usuarios · conectores · IA</div>
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn-secondary" style="font-size:.75rem;padding:.4rem .85rem" onclick="openAutoModal()">
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none"><path d="M12 5v14M5 12h14"/></svg>
+            Nueva automatización
+          </button>
+          <button class="btn-cta" style="font-size:.75rem;padding:.4rem .85rem" onclick="setPage(document.querySelector('[data-page=&quot;Agente IA&quot;]'),&quot;Agente IA&quot;,&quot;page-agente&quot;)">
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none"><path d="m12 3-1.9 5.7L4 10.3l5.7 1.9L11.6 18l1.9-5.7L19 10.3l-5.5-1.6Z"/></svg>
+            Consultar IA
+          </button>
+        </div>
+      </div>
+
+      <div class="centro-body">
+        <div class="centro-grid">
+
+          <!-- ─────────── LEFT COLUMN ─────────── -->
+          <div style="display:flex;flex-direction:column;gap:1rem">
+
+            <!-- Consola de comandos IA -->
+            <div class="cc">
+              <div class="cc-head">
+                <div class="cc-title">
+                  <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                  Consola IA
+                </div>
+                <span class="cc-action" onclick="clearCmdOutput()">Limpiar</span>
+              </div>
+              <div class="cc-body">
+                <div class="cmd-output" id="cmdOutput">
+                  <div class="cmd-line sys"><span class="cmd-prefix">SYS›</span><span class="cmd-text">BPA-Agent Centro de Control v2.0 — escribe un comando o pregunta al agente</span></div>
+                  <div class="cmd-line sys"><span class="cmd-prefix">SYS›</span><span class="cmd-text">Ejemplos: "crea automatización de email", "analiza proceso X", "¿cuánto ahorro automatizando?"</span></div>
+                </div>
+                <div class="cmd-input-row">
+                  <input class="cmd-prompt" id="cmdInput" placeholder="Escribe un comando o pregunta al agente…"
+                    onkeydown="if(event.key==='Enter')sendCmdCommand()"/>
+                  <button class="cmd-send" onclick="sendCmdCommand()">Enviar</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Monitor de automatizaciones -->
+            <div class="cc">
+              <div class="cc-head">
+                <div class="cc-title">
+                  <svg viewBox="0 0 24 24"><path d="m13 2-2 2.5h3L12 7"/><path d="M10 14v-3a2 2 0 0 1 4 0v3"/><path d="M6 14a2 2 0 0 0-2 2v2h16v-2a2 2 0 0 0-2-2"/><path d="M14 14H10"/></svg>
+                  Monitor de automatizaciones
+                </div>
+                <button class="cc-action" onclick="setPage(document.querySelector('[data-page=Automatizaciones]'),'Automatizaciones','page-automatizaciones')">Ver todas →</button>
+              </div>
+              <div class="cc-body">
+                <div class="auto-monitor-grid" id="centroAutoMonitor">
+                  <div class="loading-row"><div class="spinner"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Feed de actividad -->
+            <div class="cc">
+              <div class="cc-head">
+                <div class="cc-title">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  Actividad reciente
+                </div>
+                <span class="cc-action" id="centroActivityCount"></span>
+              </div>
+              <div class="cc-body" style="padding:.625rem .875rem">
+                <div class="feed-list" id="centroActivityFeed">
+                  <div class="loading-row"><div class="spinner"></div></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ─────────── RIGHT COLUMN ─────────── -->
+          <div style="display:flex;flex-direction:column;gap:1rem">
+
+            <!-- Acciones rápidas -->
+            <div class="cc">
+              <div class="cc-head">
+                <div class="cc-title">
+                  <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  Acciones rápidas
+                </div>
+              </div>
+              <div class="cc-body">
+                <div class="qa-grid">
+                  <button class="qa-btn" onclick="openAutoModal()">
+                    <svg viewBox="0 0 24 24"><path d="m13 2-2 2.5h3L12 7"/><path d="M10 14v-3a2 2 0 0 1 4 0v3"/><path d="M6 14a2 2 0 0 0-2 2v2h16v-2a2 2 0 0 0-2-2"/></svg>
+                    <div><div class="qa-btn-label">Nueva auto</div><div class="qa-btn-sub">Crear regla</div></div>
+                  </button>
+                  <button class="qa-btn" onclick="setPage(document.querySelector('[data-page=Procesos]'),'Procesos','page-procesos')">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><path d="M12 8v3M8.25 16.5 12 11M15.75 16.5 12 11"/></svg>
+                    <div><div class="qa-btn-label">Procesos</div><div class="qa-btn-sub">Ver mapa</div></div>
+                  </button>
+                  <button class="qa-btn" onclick="setPage(document.querySelector('[data-page=&quot;Agente IA&quot;]'),&quot;Agente IA&quot;,&quot;page-agente&quot;)">
+                    <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 1 10 10v1a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1a6 6 0 0 0-12 0v1a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1A10 10 0 0 1 12 2Z"/><path d="M8 16a4 4 0 0 0 8 0"/></svg>
+                    <div><div class="qa-btn-label">Agente IA</div><div class="qa-btn-sub">Chat</div></div>
+                  </button>
+                  <button class="qa-btn" onclick="setPage(document.querySelector('[data-page=KPIs]'),'KPIs','page-kpis')">
+                    <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                    <div><div class="qa-btn-label">KPIs</div><div class="qa-btn-sub">Métricas</div></div>
+                  </button>
+                  <button class="qa-btn" onclick="runAllActiveAutos()">
+                    <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <div><div class="qa-btn-label">Ejecutar todo</div><div class="qa-btn-sub">Activas</div></div>
+                  </button>
+                  <button class="qa-btn" onclick="loadCentro(true)">
+                    <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.73-3.9"/></svg>
+                    <div><div class="qa-btn-label">Actualizar</div><div class="qa-btn-sub">Datos live</div></div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Estado de conectores -->
+            <div class="cc">
+              <div class="cc-head">
+                <div class="cc-title">
+                  <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                  Conectores
+                </div>
+              </div>
+              <div class="cc-body" style="padding:.625rem .875rem">
+                <div class="conn-list" id="centroConnectors">
+                  <!-- filled by JS -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Usuarios de la plataforma (BD real) -->
+            <div class="cc">
+              <div class="cc-head">
+                <div class="cc-title">
+                  <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  Usuarios registrados
+                </div>
+                <span class="cc-action" id="centroUsersCount"></span>
+              </div>
+              <div class="cc-body" style="padding:.625rem .875rem">
+                <div class="users-list" id="centroUsersList">
+                  <div class="loading-row"><div class="spinner"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Salud de procesos (score heatmap) -->
+            <div class="cc">
+              <div class="cc-head">
+                <div class="cc-title">
+                  <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                  Salud de procesos
+                </div>
+              </div>
+              <div class="cc-body" style="padding:.625rem .875rem">
+                <div class="score-heatmap" id="centroProcessHeatmap">
+                  <div class="loading-row"><div class="spinner"></div></div>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- end right col -->
+
+        </div><!-- end centro-grid -->
+      </div><!-- end centro-body -->
+
+    </div>
+    </div><!-- end page-centro -->
 
   </main>
 </div>
@@ -2029,6 +2688,7 @@ function setPage(el, title, pageId) {
   if (pageId === 'page-automatizaciones') loadAutomatizaciones();
   if (pageId === 'page-kpis') loadKpis();
   if (pageId === 'page-propuestas') loadPropuestas();
+  if (pageId === 'page-centro') { if (typeof loadCentro === 'function') loadCentro(); }
 }
 
 function toggleSidebar() {
@@ -2442,7 +3102,7 @@ async function confirmDeleteAccount() {
   if (!pw) { toast('Introduce tu contraseña', 'err'); return; }
   try {
     const { token } = API.session.get();
-    const r = await fetch('http://localhost:8001/api/users/me', {
+    const r = await fetch('http://localhost:8002/api/users/me', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ password: pw }),
@@ -2491,7 +3151,29 @@ if (homeChatInputEl) {
 // Variable global del usuario autenticado (accesible desde modales)
 window._bpaUser = null;
 
-(function initSession() {
+// ── Connectivity banner ─────────────────────────────────────────────
+let _dashBackendOnline = true;
+function _setDashBanner(online) {
+  if (_dashBackendOnline === online) return;
+  _dashBackendOnline = online;
+  let el = document.getElementById('dashBackendBanner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'dashBackendBanner';
+    document.body.prepend(el);
+  }
+  const base = 'position:fixed;top:0;left:0;right:0;z-index:9999;padding:.5rem 1rem;font-size:.78rem;font-weight:600;text-align:center;transition:transform .3s';
+  if (online) {
+    el.style.cssText = base + ';background:rgba(16,185,129,.15);color:#10b981;border-bottom:1px solid rgba(16,185,129,.3)';
+    el.textContent = '✓ Conexión restaurada con el backend';
+    setTimeout(() => { el.style.transform = 'translateY(-100%)'; }, 2500);
+  } else {
+    el.style.cssText = base + ';background:rgba(244,63,94,.12);color:#f43f5e;border-bottom:1px solid rgba(244,63,94,.3)';
+    el.innerHTML = '⚠ Backend no disponible en puerto 8002 — inicia el servidor y <a href="javascript:location.reload()" style="color:inherit;text-decoration:underline">recarga</a>';
+  }
+}
+
+(async function initSession() {
   // Guard: redirige a login si no hay sesión
   const user = API.guard();
   if (!user) return;
@@ -2518,12 +3200,26 @@ window._bpaUser = null;
 
   // Bienvenida
   const h = new Date().getHours();
-  const greeting = h < 13 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
   const nameEl = document.getElementById('welcomeName');
   if (nameEl) nameEl.textContent = user.nombre || 'usuario';
   const dateEl = document.getElementById('welcomeDate');
   if (dateEl) dateEl.textContent = new Date().toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
   document.querySelectorAll('#welcomeEyebrow .dot').forEach(d => d.parentElement.firstChild.textContent = '');
+
+  // Comprobar backend antes de cargar datos (retry 3×)
+  let backendOk = false;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch('http://localhost:8002/health');
+      if (r.ok) { backendOk = true; break; }
+    } catch (_) {}
+    if (i < 2) await new Promise(res => setTimeout(res, 1500));
+  }
+
+  if (!backendOk) {
+    _setDashBanner(false);
+    return;
+  }
 
   // Cargar datos del dashboard home y navegar según hash
   loadHomeDashboard().then(() => {

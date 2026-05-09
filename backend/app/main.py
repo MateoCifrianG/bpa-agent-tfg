@@ -6,7 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from app.config import settings
 from app.database import create_tables
-from app.routers import auth, credenciales, empresas, procesos, kpis, automatizaciones, agente, users, admin
+from app.routers import auth, credenciales, empresas, procesos, kpis, automatizaciones, agente, users, admin, ejecutar, integraciones
 from app.middleware.rate_limit import RateLimitMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -77,6 +77,10 @@ async def _migrate_db():
     async with AsyncSessionLocal() as db:
         migrations = [
             "ALTER TABLE kpis ADD COLUMN proceso_id VARCHAR(36) REFERENCES procesos(id) ON DELETE SET NULL",
+            "ALTER TABLE automatizaciones ADD COLUMN tipo_trigger VARCHAR(30) DEFAULT 'manual'",
+            "ALTER TABLE automatizaciones ADD COLUMN cron_expr VARCHAR(100)",
+            "ALTER TABLE automatizaciones ADD COLUMN webhook_token VARCHAR(64)",
+            "ALTER TABLE automatizaciones ADD COLUMN tipo_accion VARCHAR(30) DEFAULT 'webhook_out'",
         ]
         for sql in migrations:
             try:
@@ -91,7 +95,11 @@ async def lifespan(app: FastAPI):
     await create_tables()
     await _migrate_db()
     await _bootstrap_admin()
+    # Arrancar scheduler de automatizaciones
+    from app.services.scheduler import start_scheduler, stop_scheduler
+    await start_scheduler()
     yield
+    await stop_scheduler()
 
 
 app = FastAPI(
@@ -131,6 +139,8 @@ app.include_router(automatizaciones.router)
 app.include_router(agente.router)
 app.include_router(credenciales.router)
 app.include_router(admin.router)
+app.include_router(ejecutar.router)
+app.include_router(integraciones.router)
 
 
 @app.get("/health")
