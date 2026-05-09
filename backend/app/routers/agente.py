@@ -25,6 +25,7 @@ from app.models.user import User
 from app.agents import motor_v4
 from app.agents import motor_v5
 from app.agents import motor_v6
+from app.security.sanitize import limpiar_input
 
 log = logging.getLogger(__name__)
 
@@ -116,7 +117,10 @@ async def chat(
     except Exception:
         historial = []
 
-    historial.append({"role": "user", "content": body.mensaje})
+    mensaje_limpio = limpiar_input(body.mensaje, max_len=2000)
+    if not mensaje_limpio:
+        raise HTTPException(status_code=422, detail="Mensaje vacío")
+    historial.append({"role": "user", "content": mensaje_limpio})
 
     accion  = None
     entidad = None
@@ -126,7 +130,7 @@ async def chat(
 
     # Motor v6: motor razonador propio con KB sectorial (primera opción siempre)
     try:
-        result_d = await motor_v6.responder(body.mensaje, empresa, db, historial)
+        result_d = await motor_v6.responder(mensaje_limpio, empresa, db, historial)
         respuesta_texto = result_d["respuesta"]
         accion  = result_d.get("accion")
         entidad = result_d.get("entidad")

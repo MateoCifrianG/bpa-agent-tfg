@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.config import settings
 from app.database import get_db
+from app.security.token_blacklist import blacklist
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -22,9 +23,11 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(data: dict[str, Any]) -> str:
+    import uuid
     payload = data.copy()
     payload["exp"] = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     payload["type"] = "access"
+    payload["jti"] = str(uuid.uuid4())   # ID único para poder revocar
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
@@ -37,9 +40,26 @@ def create_refresh_token(data: dict[str, Any]) -> str:
 
 def decode_token(token: str) -> dict:
     try:
-        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido o expirado")
+    # Comprobar blacklist
+    jti = payload.get("jti")
+    if jti and blacklist.is_revoked(jti):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revocado")
+    return payload
+
+
+def revoke_token(token: str) -> None:
+    """Revoca un access token añadiéndolo a la blacklist hasta su expiración."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        jti = payload.get("jti")
+        exp = payload.get("exp", 0)
+        if jti:
+            blacklist.revoke(jti, float(exp))
+    except JWTError:
+        pass  # Token ya inválido, no hace falta revocar
 
 
 async def get_current_user(
