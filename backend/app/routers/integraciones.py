@@ -42,6 +42,7 @@ from app.services import credenciales_service
 from app.services.integrations import (
     google_oauth, gmail_service, gcalendar_service, n8n_service, notion_service
 )
+from app.services.connectors import telegram_connector
 
 router = APIRouter(prefix="/api/integraciones", tags=["integraciones"])
 
@@ -397,6 +398,75 @@ class NotionVerificarBody(BaseModel):
 @router.post("/notion/verificar")
 async def notion_verificar(body: NotionVerificarBody, user: User = Depends(get_current_user)):
     return await notion_service.verificar_conexion(body.token)
+
+
+# ── Telegram ────────────────────────────────────────────────────────────────
+
+class TelegramMensajeBody(BaseModel):
+    mensaje: str
+    parse_mode: str = "HTML"
+
+
+@router.post("/telegram/enviar")
+async def telegram_enviar(
+    body: TelegramMensajeBody,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    empresa   = await _get_empresa(db, user)
+    bot_token = await credenciales_service.obtener_credencial(db, empresa.id, "telegram_bot_token")
+    chat_id   = await credenciales_service.obtener_credencial(db, empresa.id, "telegram_chat_id")
+    if not bot_token or not chat_id:
+        raise HTTPException(400, detail=(
+            "Telegram no configurado. Guarda el bot_token y chat_id en Integraciones."
+        ))
+    resultado = await telegram_connector.enviar_mensaje(
+        bot_token=bot_token, chat_id=chat_id,
+        mensaje=body.mensaje, parse_mode=body.parse_mode,
+    )
+    if not resultado["ok"]:
+        raise HTTPException(400, detail=resultado["error"])
+    return resultado
+
+
+@router.post("/telegram/verificar")
+async def telegram_verificar(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    empresa   = await _get_empresa(db, user)
+    bot_token = await credenciales_service.obtener_credencial(db, empresa.id, "telegram_bot_token")
+    if not bot_token:
+        raise HTTPException(400, "telegram_bot_token no configurado")
+    return await telegram_connector.verificar_bot(bot_token=bot_token)
+
+
+# ── Slack ────────────────────────────────────────────────────────────────────
+
+class SlackMensajeBody(BaseModel):
+    mensaje: str
+    canal: Optional[str] = None
+
+
+@router.post("/slack/enviar")
+async def slack_enviar(
+    body: SlackMensajeBody,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    empresa       = await _get_empresa(db, user)
+    webhook_url   = await credenciales_service.obtener_credencial(db, empresa.id, "slack_webhook")
+    if not webhook_url:
+        raise HTTPException(400, detail="Slack webhook no configurado. Añádelo en Integraciones.")
+    import httpx
+    payload: dict = {"text": body.mensaje}
+    if body.canal:
+        payload["channel"] = body.canal
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(webhook_url, json=payload)
+    if r.status_code == 200:
+        return {"ok": True, "mensaje": "Mensaje enviado a Slack"}
+    return {"ok": False, "error": f"Slack error: {r.text}"}
 
 
 # ── Guardar credenciales de integraciones ───────────────────────────────────

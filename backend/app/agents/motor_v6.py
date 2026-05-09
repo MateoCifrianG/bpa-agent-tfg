@@ -19,6 +19,9 @@ from app.models.proceso import Proceso
 from app.models.kpi import KPI
 from app.models.automatizacion import Automatizacion
 from app.models.empresa import Empresa
+from app.services import credenciales_service
+from app.services.connectors import telegram_connector
+from app.services.integrations import gmail_service, gcalendar_service
 
 from app.agents.motor_v6_kb import (
     SECTORES,
@@ -829,29 +832,117 @@ async def responder(
         # ── EMAIL / CALENDAR / TELEGRAM ───────────────────────────────────────
         elif intent == "enviar_email":
             email_dest = entities.get("email")
-            if email_dest:
-                respuesta = (
-                    f"Para enviar el email a **{email_dest}** necesito el conector de Gmail activo. "
-                    "Ve a *Integraciones* en el panel y conecta tu cuenta de Gmail. "
-                    "Una vez activo, podré enviar emails directamente desde aquí."
-                )
-            else:
+            if not email_dest:
                 respuesta = "¿A qué email quieres enviar el mensaje? (ej: 'envía un email a nombre@empresa.com')"
+            else:
+                google_raw = await credenciales_service.obtener_credencial(db, empresa.id, "google_tokens")
+                if google_raw:
+                    import json
+                    tokens = json.loads(google_raw)
+                    # Extraer asunto y cuerpo del mensaje o pedir más info
+                    asunto_m = re.search(r'asunto[:\s]+["\']?(.+?)["\']?(?:\s+y\s+|\s*$)', mensaje, re.I)
+                    asunto = asunto_m.group(1).strip() if asunto_m else "Mensaje desde BPA-Agent"
+                    # Cuerpo: todo lo que no es el destinatario ni el asunto
+                    cuerpo_m = re.search(r'(?:diciendo|mensaje|cuerpo|texto|que diga)[:\s]+["\']?(.+)', mensaje, re.I)
+                    cuerpo = cuerpo_m.group(1).strip() if cuerpo_m else "Mensaje enviado automáticamente desde BPA-Agent."
+                    result_email = await gmail_service.enviar_email(
+                        access_token=tokens["access_token"],
+                        refresh_token=tokens.get("refresh_token"),
+                        destinatario=email_dest,
+                        asunto=asunto,
+                        cuerpo=cuerpo,
+                    )
+                    if result_email["ok"]:
+                        respuesta = (
+                            f"✅ Email enviado a **{email_dest}** desde {result_email.get('remitente', 'tu cuenta')}.\n"
+                            f"Asunto: *{asunto}*"
+                        )
+                        accion = "enviar_email"
+                    else:
+                        respuesta = f"Error al enviar el email: {result_email.get('error', 'error desconocido')}. ¿Intento de nuevo?"
+                else:
+                    respuesta = (
+                        f"Para enviar el email a **{email_dest}** necesito el conector de Gmail activo. "
+                        "Ve a *Integraciones* en el panel y conecta tu cuenta Google. "
+                        "Una vez activo, podré enviar emails directamente desde el chat."
+                    )
 
         elif intent == "crear_evento_calendar":
             fecha = entities.get("fecha", "próximamente")
             hora = entities.get("hora", "")
-            respuesta = (
-                f"Para agendar la reunión el **{fecha}**{' a las ' + hora if hora else ''}, "
-                "necesito el conector de Google Calendar. "
-                "Conéctalo en *Integraciones* y podrás crear eventos directamente desde el chat."
-            )
+            google_raw = await credenciales_service.obtener_credencial(db, empresa.id, "google_tokens")
+            if google_raw:
+                import json
+                from datetime import datetime, timedelta
+                tokens = json.loads(google_raw)
+                # Intentar construir datetime de inicio
+                try:
+                    hoy = datetime.now()
+                    fecha_str = entities.get("fecha", "")
+                    hora_str  = entities.get("hora", "")
+                    if "mañana" in fecha_str.lower():
+                        dt = hoy + timedelta(days=1)
+                    elif "hoy" in fecha_str.lower():
+                        dt = hoy
+                    else:
+                        dt = hoy + timedelta(days=1)  # default: mañana
+                    # Parsear hora si existe
+                    hora_match = re.search(r'(\d{1,2})[:h](\d{2})?', hora_str or mensaje)
+                    if hora_match:
+                        h = int(hora_match.group(1))
+                        m_min = int(hora_match.group(2) or 0)
+                        dt = dt.replace(hour=h, minute=m_min, second=0, microsecond=0)
+                    else:
+                        dt = dt.replace(hour=9, minute=0, second=0, microsecond=0)
+                    titulo_m = re.search(r'(?:reuni[oó]n|evento|cita|llamada)\s+(?:de\s+|sobre\s+|con\s+)?(.+?)(?:\s+el\s+|\s+mañana|\s+hoy|$)', mensaje, re.I)
+                    titulo = titulo_m.group(1).strip() if titulo_m else "Reunión BPA-Agent"
+                    result_cal = await gcalendar_service.crear_evento(
+                        access_token=tokens["access_token"],
+                        refresh_token=tokens.get("refresh_token"),
+                        titulo=titulo,
+                        inicio=dt.isoformat(),
+                        duracion_minutos=60,
+                    )
+                    if result_cal["ok"]:
+                        respuesta = (
+                            f"✅ Evento **{titulo}** creado en Google Calendar para el {dt.strftime('%d/%m a las %H:%M')}.\n"
+                            + (f"[Ver evento]({result_cal['link']})" if result_cal.get("link") else "")
+                        )
+                        accion = "crear_evento_calendar"
+                    else:
+                        respuesta = f"Error al crear el evento: {result_cal.get('error')}. ¿Lo intentamos de nuevo?"
+                except Exception as exc:
+                    log.warning("Calendar crear error: %s", exc)
+                    respuesta = f"Para agendar el evento el **{fecha}**, ¿puedes indicarme la fecha y hora exactas? (ej: 'mañana a las 10h')"
+            else:
+                respuesta = (
+                    f"Para agendar la reunión el **{fecha}**{(' a las ' + hora) if hora else ''}, "
+                    "necesito el conector de Google Calendar. "
+                    "Conéctalo en *Integraciones* y podré crear eventos directamente desde el chat."
+                )
 
         elif intent == "enviar_telegram":
-            respuesta = (
-                "Para enviar mensajes por Telegram necesitas configurar el bot en *Integraciones*. "
-                "Solo tarda 2 minutos: necesitas el token del bot y el chat ID de destino."
-            )
+            bot_token = await credenciales_service.obtener_credencial(db, empresa.id, "telegram_bot_token")
+            chat_id   = await credenciales_service.obtener_credencial(db, empresa.id, "telegram_chat_id")
+            if bot_token and chat_id:
+                # Extraer texto del mensaje
+                texto_m = re.search(r'(?:envía|manda|di|mensaje)[:\s]+["\']?(.+?)(?:["\']?\s*por telegram|$)', mensaje, re.I)
+                texto_telegram = texto_m.group(1).strip() if texto_m else mensaje
+                result_tg = await telegram_connector.enviar_mensaje(
+                    bot_token=bot_token, chat_id=chat_id,
+                    mensaje=texto_telegram,
+                )
+                if result_tg["ok"]:
+                    respuesta = f"✅ Mensaje enviado por Telegram."
+                    accion = "enviar_telegram"
+                else:
+                    respuesta = f"Error al enviar por Telegram: {result_tg.get('error')}. ¿Comprueba la configuración en Integraciones?"
+            else:
+                respuesta = (
+                    "Para enviar mensajes por Telegram necesitas configurar el bot en *Integraciones*. "
+                    "Solo tarda 2 minutos: necesitas el token del bot y el chat ID de destino. "
+                    "¿Te explico cómo obtenerlos?"
+                )
 
         # ── INFO ──────────────────────────────────────────────────────────────
         elif intent == "estado_sistema":
