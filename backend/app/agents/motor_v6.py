@@ -136,9 +136,18 @@ class ContextManager:
 # INTENT CLASSIFIER
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _normalizar_texto(s: str) -> str:
+    import unicodedata
+    return "".join(
+        c for c in unicodedata.normalize("NFD", s)
+        if unicodedata.category(c) != "Mn"
+    )
+
+
 class IntentClassifier:
     def classify(self, texto: str, ctx: ContextManager) -> tuple[str, float]:
         texto_lower = texto.lower().strip()
+        texto_norm = _normalizar_texto(texto_lower)
         best_intent = "no_entendido"
         best_score = 0.0
 
@@ -146,7 +155,7 @@ class IntentClassifier:
             intent = pdef["intent"]
             peso = pdef["peso"]
             for patron in pdef["patrones"]:
-                if re.search(patron, texto_lower, re.I):
+                if re.search(patron, texto_norm, re.I) or re.search(patron, texto_lower, re.I):
                     if peso > best_score:
                         best_score = peso
                         best_intent = intent

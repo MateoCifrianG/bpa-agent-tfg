@@ -171,7 +171,7 @@ SECTORES: dict[str, dict] = {
         "roi_horas_mes": 30,
     },
     "marketing": {
-        "aliases": ["marketing", "comunicación", "comunicacion", "publicidad", "redes sociales", "contenido"],
+        "aliases": ["marketing", "comunicación", "comunicacion", "publicidad", "publicitar", "redes sociales", "contenido", "campaña", "campañas", "campana", "campanas"],
         "procesos_tipicos": [
             "Gestión de campañas", "Creación de contenido", "Email marketing",
             "Gestión de redes sociales", "Análisis de métricas", "Generación de leads",
@@ -340,7 +340,7 @@ INTENT_PATTERNS: list[dict] = [
     # ── Saludos / Social ──────────────────────────────────────────────────────
     {
         "intent": "saludo",
-        "patrones": [r"\bhola\b", r"\bbuenos?\s*(días|dias|tardes|noches)\b", r"\bqué\s+tal\b",
+        "patrones": [r"\bhola\b", r"\bbuen[ao]s?\s*(días|dias|tardes|noches)\b", r"\bqué\s+tal\b",
                      r"\bcómo\s+(estás|estas|va)\b", r"\bey\b", r"\bhi\b", r"\bhello\b"],
         "peso": 1.0,
     },
@@ -353,7 +353,8 @@ INTENT_PATTERNS: list[dict] = [
     {
         "intent": "agradecimiento",
         "patrones": [r"\bgraci[ao]s\b", r"\bgenial\b", r"\bperfecto\b", r"\bexcelente\b",
-                     r"\bmuy\s+bien\b", r"\bestupendo\b", r"\bgran\b", r"\bbuen\s+trabajo\b"],
+                     r"\bmuy\s+bien\b", r"\bestupendo\b", r"\bgran\b", r"\bbuen\s+trabajo\b",
+                     r"\bagrad\w+\b"],
         "peso": 0.9,
     },
     {
@@ -424,6 +425,7 @@ INTENT_PATTERNS: list[dict] = [
                      r"\bqu[eé]\s+kpis?\s+(?:debo|deber[ií]a|medir|usar)\b",
                      r"\bqu[eé]\s+(?:indicadores?|m[eé]tricas?)\s+(?:debo|deber[ií]a|necesito|recomend[ae]s?)\b",
                      r"\bqu[eé]\s+medir\b", r"\bc[oó]mo\s+medir\b", r"\bindic[ae]dores?\b.*\brecomend[ae]\b",
+                     r"\brecomie?nd[ae]\w*\b.*\bindicadores?\b", r"\bindicadores?\b.*\brecomie?nd[ae]\b",
                      r"\bkpis?\s+(de|para|en)\s+\w+", r"\bmétricas?\b.*\bsector\b"],
         "peso": 1.0,
         "entidades": ["sector"],
@@ -438,8 +440,9 @@ INTENT_PATTERNS: list[dict] = [
     },
     {
         "intent": "listar_automatizaciones",
-        "patrones": [r"\bver?\b.*\bauto(?:mati[sz]ac[ió]n)?es?\b", r"\blistar?\b.*\bauto\b",
-                     r"\bqu[eé]\s+auto(?:mati[sz]ac[ió]n)?es?\b", r"\bmis\s+auto\w*\b"],
+        "patrones": [r"\bver?\b.*\bauto(?:mati[sz]aci[oó]n)?es?\b", r"\blistar?\b.*\bauto\b",
+                     r"\bqu[eé]\s+auto(?:mati[sz]aci[oó]n)?es?\b", r"\bmis\s+auto\w*\b",
+                     r"\bver\s+automatizaciones?\b", r"\bautomat\w*\b.*\bver\b"],
         "peso": 1.0,
     },
     {
@@ -535,7 +538,8 @@ INTENT_PATTERNS: list[dict] = [
     {
         "intent": "info_sector",
         "patrones": [r"\bsector\b", r"\bindustria\b", r"\bcómo\s+está\s+el\s+sector\b",
-                     r"\bbenchmark\b", r"\bcomparativa\b.*\bsector\b"],
+                     r"\bbenchmark\b", r"\bcomparativa\b.*\bsector\b",
+                     r"\bmejores\s+pr[aá]cticas?\b", r"\bbuenas\s+pr[aá]cticas?\b"],
         "peso": 0.8,
     },
 ]
@@ -688,12 +692,29 @@ ENTITY_PATTERNS = {
     "sector": None,  # se calcula dinámicamente contra SECTORES
 }
 
+def _normalizar(s: str) -> str:
+    """Elimina acentos para comparación flexible."""
+    import unicodedata
+    return "".join(
+        c for c in unicodedata.normalize("NFD", s)
+        if unicodedata.category(c) != "Mn"
+    )
+
 def detectar_sector(texto: str) -> str | None:
+    import re
     texto_lower = texto.lower()
+    texto_norm = _normalizar(texto_lower)
+    palabras_norm = set(re.split(r'\W+', texto_norm))
     for sector, data in SECTORES.items():
         for alias in data["aliases"]:
-            if alias in texto_lower:
-                return sector
+            alias_norm = _normalizar(alias.lower())
+            # Aliases cortos (<= 3 chars) requieren coincidencia de palabra completa
+            if len(alias_norm) <= 3:
+                if alias_norm in palabras_norm:
+                    return sector
+            else:
+                if alias_norm in texto_norm:
+                    return sector
     return None
 
 def detectar_nombre_proceso(texto: str, procesos_disponibles: list[str]) -> str | None:
