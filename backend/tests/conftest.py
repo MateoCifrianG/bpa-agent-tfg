@@ -13,8 +13,12 @@ from sqlalchemy import text
 from app.main import app
 from app.database import Base, get_db
 from app.auth.jwt import hash_password, create_access_token
+from app.middleware.rate_limit import reset_all as _reset_rate_limits
 from app.models.user import User
 from app.models.empresa import Empresa
+from app.models.proceso import Proceso
+from app.models.kpi import KPI
+from app.models.automatizacion import Automatizacion
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -45,6 +49,12 @@ async def db_session(test_engine):
     async with _factory() as session:
         yield session
         await session.rollback()
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    """Limpia el rate limiter antes de cada test para evitar 429 espurios."""
+    _reset_rate_limits()
 
 
 @pytest_asyncio.fixture
@@ -87,7 +97,6 @@ async def test_user(db_session: AsyncSession):
     db_session.add(empresa)
     await db_session.commit()
     await db_session.refresh(user)
-    # Guardar email para que los tests de auth puedan usarlo
     user._test_password = "TestPass1!"
     return user
 
@@ -124,3 +133,46 @@ async def admin_user(db_session: AsyncSession):
 async def admin_headers(admin_user: User):
     token = create_access_token({"sub": admin_user.id, "role": admin_user.role})
     return {"Authorization": f"Bearer {token}"}
+
+
+# ── Fixtures de recursos ───────────────────────────────────────────────────────
+
+@pytest_asyncio.fixture
+async def test_proceso(client: AsyncClient, auth_headers):
+    """Crea un proceso de test y devuelve su JSON."""
+    r = await client.post("/api/procesos", headers=auth_headers, json={
+        "nombre": "Proceso Fixture",
+        "descripcion": "Proceso creado automáticamente para tests",
+        "responsable": "Test User",
+        "frecuencia": "mensual",
+        "duracion_h": 10,
+    })
+    assert r.status_code == 201
+    return r.json()
+
+
+@pytest_asyncio.fixture
+async def test_kpi(client: AsyncClient, auth_headers):
+    """Crea un KPI de test y devuelve su JSON."""
+    r = await client.post("/api/kpis", headers=auth_headers, json={
+        "nombre": "KPI Fixture",
+        "valor": "85",
+        "unidad": "%",
+        "objetivo": "90",
+        "categoria": "calidad",
+    })
+    assert r.status_code == 201
+    return r.json()
+
+
+@pytest_asyncio.fixture
+async def test_auto(client: AsyncClient, auth_headers):
+    """Crea una automatización de test y devuelve su JSON."""
+    r = await client.post("/api/automatizaciones", headers=auth_headers, json={
+        "nombre": "Auto Fixture",
+        "descripcion": "Automatización creada para tests",
+        "herramienta": "n8n",
+        "horas_mes": 5,
+    })
+    assert r.status_code == 201
+    return r.json()

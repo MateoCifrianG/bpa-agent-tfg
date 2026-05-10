@@ -95,6 +95,8 @@ class UserOut(BaseModel):
     plan: str
     is_active: bool
     avatar: str
+    ciudad: Optional[str] = None
+    telefono: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

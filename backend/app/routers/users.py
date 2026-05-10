@@ -22,11 +22,15 @@ class UserUpdate(BaseModel):
     @field_validator("nombre", "apellido", "ciudad")
     @classmethod
     def sanitize_str(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 255:
+            raise ValueError("El campo no puede superar los 255 caracteres")
         return limpiar_nombre(v, max_len=255) if v is not None else None
 
     @field_validator("telefono")
     @classmethod
     def sanitize_telefono(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 30:
+            raise ValueError("El teléfono no puede superar los 30 caracteres")
         return limpiar_nombre(v, max_len=30) if v is not None else None
 
 

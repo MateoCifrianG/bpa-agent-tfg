@@ -36,11 +36,15 @@ class EmpresaUpdate(BaseModel):
     @field_validator("nombre", "sector", "ciudad")
     @classmethod
     def sanitize_short(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 255:
+            raise ValueError("El campo no puede superar los 255 caracteres")
         return limpiar_nombre(v, max_len=255) if v is not None else None
 
     @field_validator("descripcion")
     @classmethod
     def sanitize_desc(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 1000:
+            raise ValueError("La descripción no puede superar los 1000 caracteres")
         return limpiar_nombre(v, max_len=1000) if v is not None else None
 
 

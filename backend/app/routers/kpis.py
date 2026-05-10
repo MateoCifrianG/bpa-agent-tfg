@@ -18,6 +18,8 @@ router = APIRouter(prefix="/api/kpis", tags=["kpis"])
 def _sanitize_str(v: str | None, max_len: int = 255) -> str | None:
     if v is None:
         return None
+    if len(v) > max_len:
+        raise ValueError(f"El campo no puede superar los {max_len} caracteres")
     return limpiar_nombre(v, max_len=max_len)
 
 

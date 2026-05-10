@@ -51,6 +51,13 @@ def _cleanup(bucket: dict[str, list], window_seconds: int) -> None:
         del bucket[ip]
 
 
+def reset_all() -> None:
+    """Vacía todos los buckets. Útil en tests para evitar 429 entre casos."""
+    with _lock:
+        for k in _store:
+            _store[k].clear()
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
