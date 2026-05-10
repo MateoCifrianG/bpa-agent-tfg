@@ -128,11 +128,14 @@ def desprogramar_automatizacion(auto_id: str):
 
 def listar_jobs_activos() -> list[dict]:
     scheduler = get_scheduler()
+    if not scheduler.running:
+        return []
     jobs = []
     for job in scheduler.get_jobs():
+        next_run = getattr(job, "next_run_time", None)
         jobs.append({
             "id": job.id,
-            "next_run": str(job.next_run_time) if job.next_run_time else None,
-            "trigger": str(job.trigger),
+            "next_run": str(next_run) if next_run else None,
+            "trigger": str(getattr(job, "trigger", "")),
         })
     return jobs
