@@ -27,59 +27,7 @@ let _chatHistorial  = [];   // historial en memoria del chat activo
 let _isSending      = false;
 let _searchData     = [];   // índice para búsqueda global
 
-// ── API helper (thin wrapper sobre api.js) ────────────────────
-const BPA = {
-  async get(path) {
-    const { token } = API.session.get();
-    const r = await fetch('http://localhost:8002' + path, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: 'include',
-    });
-    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-    return r.json();
-  },
-  async post(path, body) {
-    const { token } = API.session.get();
-    const r = await fetch('http://localhost:8002' + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-      credentials: 'include',
-    });
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      throw new Error(err.detail || `Error ${r.status}`);
-    }
-    return r.json();
-  },
-  async put(path, body) {
-    const { token } = API.session.get();
-    const r = await fetch('http://localhost:8002' + path, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-      credentials: 'include',
-    });
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      throw new Error(err.detail || `Error ${r.status}`);
-    }
-    return r.json();
-  },
-  async del(path) {
-    const { token } = API.session.get();
-    const r = await fetch('http://localhost:8002' + path, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: 'include',
-    });
-    if (!r.ok && r.status !== 204) {
-      const err = await r.json().catch(() => ({}));
-      throw new Error(err.detail || `Error ${r.status}`);
-    }
-    return true;
-  },
-};
+// BPA helper viene de api.js — no redeclarar aquí
 
 // ── Utilidades DOM ────────────────────────────────────────────
 function esc(s) {
@@ -1602,6 +1550,25 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.onclick = () => navTo('Dashboard', 'page-home');
     }
   });
+
+  // Chat input: Enter → sendChat (refuerzo del inline onkeydown)
+  const chatInputEl = document.getElementById('chatInput');
+  if (chatInputEl) {
+    chatInputEl.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey && this.value.trim()) {
+        e.preventDefault();
+        sendChat();
+      }
+    });
+  }
+
+  // Botón enviar chat (refuerzo del onclick)
+  const chatSendBtnEl = document.getElementById('chatSendBtn');
+  if (chatSendBtnEl) {
+    chatSendBtnEl.addEventListener('click', function() {
+      sendChat();
+    });
+  }
 });
 
 // ── setPage hook: cargar datos al entrar en sección ───────────
